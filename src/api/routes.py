@@ -1,5 +1,6 @@
 """API route handlers."""
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -7,7 +8,10 @@ from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
+from src.agent import Agent, ActionType, AgentExecutor
 from src.api.dependencies import get_embedder, get_generator, get_retriever
 from src.core.config import settings
 from src.ingestion import Embedder, ProcessorRouter, TextChunker
@@ -25,6 +29,23 @@ from src.worker.tasks import process_document_task
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class Message(BaseModel):
+    """Chat message format compatible with AI SDK."""
+    role: str
+    content: str
+
+    class Config:
+        extra = "allow"  # Allow extra fields from AI SDK
+
+
+class ChatRequest(BaseModel):
+    """Chat request format compatible with AI SDK."""
+    messages: List[Message]
+
+    class Config:
+        extra = "allow"  # Allow extra fields from AI SDK
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -177,4 +198,115 @@ async def delete_document(document_id: UUID):
 
     except Exception as e:
         logger.error(f"Delete error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat")
+async def chat_stream(
+    request: ChatRequest,
+    retriever: HybridRetriever = Depends(get_retriever),
+    generator: Generator = Depends(get_generator),
+):
+    """
+    Streaming chat endpoint compatible with AI SDK.
+
+    Args:
+        request: Chat request with messages
+        retriever: Hybrid retriever instance
+        generator: Generator instance
+
+    Returns:
+        StreamingResponse with AI SDK Data Stream Protocol format
+    """
+    try:
+        # Extract the last user message as the query
+        user_messages = [msg for msg in request.messages if msg.role == "user"]
+        if not user_messages:
+            raise HTTPException(status_code=400, detail="No user message found")
+
+        query = user_messages[-1].content
+
+        # Execute agent with ReAct pattern
+        executor = AgentExecutor(
+            retriever=retriever,
+            max_iterations=2,
+            quality_threshold=0.5,
+            enable_reflection=False,  # Disabled for speed (1 LLM call vs 2-3)
+        )
+
+        chunks, execution_steps, plan = executor.execute(
+            query=query, top_k=settings.final_top_k
+        )
+
+        logger.info(
+            f"Agent execution completed: action={plan.action}, "
+            f"needs_retrieval={plan.needs_retrieval}, "
+            f"steps_taken={len(execution_steps)}, "
+            f"chunks_found={len(chunks)}"
+        )
+
+        async def generate():
+            """Generate AI SDK compatible streaming response."""
+            import uuid
+            text_id = str(uuid.uuid4())
+
+            try:
+                # Start text block
+                start_event = {"type": "text-start", "id": text_id}
+                yield f'data: {json.dumps(start_event)}\n\n'
+
+                if plan.needs_retrieval:
+                    if not chunks:
+                        response = "I couldn't find any relevant information in the uploaded documents for your question. The agent tried multiple search strategies but couldn't locate useful content. Could you try rephrasing or ask about something else?"
+                        for char in response:
+                            delta_event = {"type": "text-delta", "id": text_id, "delta": char}
+                            yield f'data: {json.dumps(delta_event)}\n\n'
+                    else:
+                        logger.info(f"Generating answer from {len(chunks)} chunks")
+                        for token in generator.generate_stream(query=query, chunks=chunks):
+                            delta_event = {"type": "text-delta", "id": text_id, "delta": token}
+                            yield f'data: {json.dumps(delta_event)}\n\n'
+
+                        for chunk in chunks:
+                            filename = chunk.metadata.source.split("/")[-1]
+                            page_info = f" (Page {chunk.metadata.page_number})" if chunk.metadata.page_number else ""
+                            score_info = f" [{(chunk.score * 100):.0f}%]"
+
+                            source_event = {
+                                "type": "source-document",
+                                "sourceId": str(chunk.metadata.chunk_id),
+                                "mediaType": "file",
+                                "title": f"{filename}{page_info}{score_info}",
+                            }
+                            yield f'data: {json.dumps(source_event)}\n\n'
+
+                else:
+                    logger.info(f"Executing {plan.action} without RAG")
+                    response = plan.suggested_response if plan.suggested_response else generator.generate(query=query, chunks=[])
+
+                    for char in response:
+                        delta_event = {"type": "text-delta", "id": text_id, "delta": char}
+                        yield f'data: {json.dumps(delta_event)}\n\n'
+
+                end_event = {"type": "text-end", "id": text_id}
+                yield f'data: {json.dumps(end_event)}\n\n'
+
+            except Exception as e:
+                logger.error(f"Error during stream generation: {e}")
+                yield f'data: {json.dumps({"type": "error", "error": str(e)})}\n\n'
+            finally:
+                yield 'data: [DONE]\n\n'
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "x-vercel-ai-data-stream": "v1",
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Chat stream error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

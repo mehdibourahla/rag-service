@@ -1,7 +1,7 @@
 """RAG generation using OpenAI GPT-4o-mini with structured outputs."""
 
 import logging
-from typing import List
+from typing import Iterator, List
 
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -182,3 +182,51 @@ Please answer the question based on the provided context. Indicate which sources
         answer = completion.choices[0].message.content.strip()
         logger.info(f"Generated fallback answer: {len(answer)} chars")
         return answer
+
+    def generate_stream(
+        self,
+        query: str,
+        chunks: List[RetrievedChunk],
+        max_tokens: int = 1000,
+        temperature: float = 0.3,
+    ) -> Iterator[str]:
+        """
+        Generate answer using retrieved chunks with streaming support.
+
+        Args:
+            query: User query
+            chunks: Retrieved context chunks
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature (0.0-2.0)
+
+        Yields:
+            Generated text chunks
+        """
+        client = self._get_client()
+
+        # Build prompt
+        system_message, user_prompt = self._build_prompt(query, chunks)
+
+        logger.info(f"Streaming answer for query: '{query[:50]}...' using {self.model_name}")
+
+        try:
+            # Create streaming completion
+            stream = client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True,
+            )
+
+            # Stream tokens
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+
+        except Exception as e:
+            logger.error(f"Error streaming answer: {e}")
+            yield f"\n\nError: {str(e)}"
