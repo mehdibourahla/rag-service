@@ -1,0 +1,65 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.pytest_cache
+.ruff_cache
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Environment files (will be mounted as volume)
+.env
+
+# Data directories (will be mounted as volumes)
+data/uploads/*
+data/processed/*
+data/chunks/*
+
+# Keep directory structure
+!data/uploads/.gitkeep
+!data/processed/.gitkeep
+!data/chunks/.gitkeep
+
+# Models (too large)
+models/
+
+# Testing
+tests/
+*.coverage
+htmlcov/
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
+logs/
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # Qdrant vector database
+  qdrant:
+    image: qdrant/qdrant:v1.13.0
+    container_name: rag-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  # Redis for task queue
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  # RAG API Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-api
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+      - ./data/tiktoken_cache:/app/tiktoken_cache
+    environment:
+      - QDRANT_HOST=qdrant
+      - REDIS_HOST=redis
+      - API_HOST=0.0.0.0
+      - API_PORT=8001
+      - TIKTOKEN_CACHE_DIR=/app/tiktoken_cache
+    depends_on:
+      - qdrant
+      - redis
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  # Worker service for async processing
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-worker
+    command: python worker.py
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+      - ./data/tiktoken_cache:/app/tiktoken_cache
+    environment:
+      - QDRANT_HOST=qdrant
+      - REDIS_HOST=redis
+      - TIKTOKEN_CACHE_DIR=/app/tiktoken_cache
+    depends_on:
+      - qdrant
+      - redis
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+volumes:
+  qdrant_storage:
+  redis_data:
+
+networks:
+  rag-network:
+    driver: bridge
