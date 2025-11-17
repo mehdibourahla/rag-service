@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Optional
 from uuid import UUID
 
 from src.core.config import settings
@@ -11,20 +12,21 @@ from src.retrieval import BM25Index, VectorStore
 logger = logging.getLogger(__name__)
 
 
-def process_document(document_id: UUID, file_path: str):
+def process_document(document_id: UUID, file_path: str, tenant_id: Optional[UUID] = None):
     """
     Process a document: extract, chunk, embed, and index.
 
     Args:
         document_id: Unique document identifier
         file_path: Path to the uploaded file
+        tenant_id: Tenant ID for multi-tenancy (optional for backwards compatibility)
 
     Raises:
         Exception: If processing fails
     """
     try:
         path = Path(file_path)
-        logger.info(f"Processing document {document_id}: {path.name}")
+        logger.info(f"Processing document {document_id} for tenant {tenant_id}: {path.name}")
 
         # Initialize components
         router = ProcessorRouter()
@@ -37,7 +39,12 @@ def process_document(document_id: UUID, file_path: str):
             port=settings.qdrant_port,
             collection_name=settings.qdrant_collection,
         )
-        bm25_index = BM25Index(index_path=settings.chunks_dir / "bm25_index.json")
+
+        # Use tenant-specific BM25 index if tenant_id is provided
+        if tenant_id:
+            bm25_index = BM25Index(tenant_id=tenant_id)
+        else:
+            bm25_index = BM25Index(index_path=settings.chunks_dir / "bm25_index.json")
 
         # Step 1: Extract content
         content, modality = router.route(path)
@@ -56,15 +63,15 @@ def process_document(document_id: UUID, file_path: str):
         embedder.embed_chunks(chunks)
         logger.info(f"Generated embeddings for {len(chunks)} chunks")
 
-        # Step 4: Index in vector store
-        vector_store.add_chunks(chunks)
+        # Step 4: Index in vector store (with tenant_id)
+        vector_store.add_chunks(chunks, tenant_id=tenant_id)
         logger.info(f"Indexed {len(chunks)} chunks in vector store")
 
-        # Step 5: Index in BM25
-        bm25_index.add_chunks(chunks)
+        # Step 5: Index in BM25 (with tenant_id)
+        bm25_index.add_chunks(chunks, tenant_id=tenant_id)
         logger.info(f"Indexed {len(chunks)} chunks in BM25 index")
 
-        logger.info(f"Successfully processed document {document_id}")
+        logger.info(f"Successfully processed document {document_id} for tenant {tenant_id}")
 
     except Exception as e:
         logger.error(f"Error processing document {document_id}: {e}")

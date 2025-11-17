@@ -1,7 +1,8 @@
 """Hybrid retrieval combining dense and sparse search with LLM-based reranking."""
 
 import logging
-from typing import List
+from typing import List, Optional
+from uuid import UUID
 
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -35,6 +36,7 @@ class HybridRetriever:
         bm25_index: BM25Index,
         embedder: Embedder,
         use_llm_reranking: bool = True,
+        tenant_id: Optional[UUID] = None,
     ):
         """
         Initialize hybrid retriever.
@@ -44,11 +46,13 @@ class HybridRetriever:
             bm25_index: BM25 index
             embedder: Embedding generator
             use_llm_reranking: Whether to use LLM-based reranking
+            tenant_id: Tenant ID for multi-tenant filtering (optional)
         """
         self.vector_store = vector_store
         self.bm25_index = bm25_index
         self.embedder = embedder
         self.use_llm_reranking = use_llm_reranking
+        self.tenant_id = tenant_id
         self._client = None
 
     def _get_client(self) -> OpenAI:
@@ -191,11 +195,12 @@ class HybridRetriever:
 
         logger.info(f"Retrieving for query: '{query[:50]}...' (top_k={top_k})")
 
-        # 1. Dense retrieval
+        # 1. Dense retrieval (with tenant filtering)
         query_embedding = self.embedder.embed_query(query)
         dense_results = self.vector_store.search(
             query_embedding=query_embedding,
             top_k=retrieval_k,
+            tenant_id=self.tenant_id,  # Filter by tenant
         )
 
         # 2. Sparse retrieval
