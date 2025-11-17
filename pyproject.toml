@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "rag-service"
+name = "pingo-chatbot"
 version = "0.1.0"
-description = "Production-grade multi-modal RAG system"
+description = "Multi-tenant AI chatbot platform with agentic RAG"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
 
@@ -10,7 +10,6 @@ python = ">=3.10,<3.13"
 fastapi = {extras = ["standard"], version = "^0.115.0"}
 pydantic = "^2.10.0"
 pydantic-settings = "^2.6.0"
-python-multipart = "^0.0.20"
 aiofiles = "^24.1.0"
 
 # Document processing
@@ -20,9 +19,10 @@ pdf2image = "^1.17.0"
 python-docx = "^1.1.2"
 pillow = "^11.0.0"
 
-# Audio/Video processing
-openai-whisper = "^20250625"
-ffmpeg-python = "^0.2.0"
+# Web scraping
+playwright = "^1.49.0"
+beautifulsoup4 = "^4.12.0"
+lxml = "^5.3.0"
 
 # OpenAI
 openai = "^2.7.0"
@@ -37,9 +37,21 @@ qdrant-client = "^1.13.0"
 # BM25
 rank-bm25 = "^0.2.2"
 
-# Task queue
-redis = "^5.2.0"
-rq = "^2.0.0"
+# Database
+sqlalchemy = "^2.0.0"
+alembic = "^1.15.0"
+psycopg2-binary = "^2.9.0"
+
+# Authentication and security
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+python-multipart = "^0.0.20"
+
+# Rate limiting
+slowapi = "^0.1.9"
+
+# Observability
+prometheus-client = "^0.21.0"
 
 # Utilities
 pyyaml = "^6.0.2"

@@ -4,7 +4,7 @@ services:
   # Qdrant vector database
   qdrant:
     image: qdrant/qdrant:v1.13.0
-    container_name: rag-qdrant
+    container_name: pingo-qdrant
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -16,25 +16,28 @@ services:
     networks:
       - rag-network
 
-  # Redis for task queue
-  redis:
-    image: redis:7-alpine
-    container_name: rag-redis
+  # PostgreSQL database
+  postgres:
+    image: postgres:16-alpine
+    container_name: pingo-postgres
     ports:
-      - "6379:6379"
+      - "5432:5432"
     volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=pingo
+      - POSTGRES_PASSWORD=pingo
+      - POSTGRES_DB=pingo
     restart: unless-stopped
     networks:
       - rag-network
 
-  # RAG API Service
+  # Pingo API Service
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: rag-api
+    container_name: pingo-api
     ports:
       - "8001:8001"
     volumes:
@@ -43,42 +46,20 @@ services:
       - ./data/tiktoken_cache:/app/tiktoken_cache
     environment:
       - QDRANT_HOST=qdrant
-      - REDIS_HOST=redis
+      - DATABASE_URL=postgresql://pingo:pingo@postgres:5432/pingo
       - API_HOST=0.0.0.0
       - API_PORT=8001
       - TIKTOKEN_CACHE_DIR=/app/tiktoken_cache
     depends_on:
       - qdrant
-      - redis
-    restart: unless-stopped
-    networks:
-      - rag-network
-
-  # Worker service for async processing
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: rag-worker
-    command: python worker.py
-    volumes:
-      - ./data:/app/data
-      - ./.env:/app/.env
-      - ./data/tiktoken_cache:/app/tiktoken_cache
-    environment:
-      - QDRANT_HOST=qdrant
-      - REDIS_HOST=redis
-      - TIKTOKEN_CACHE_DIR=/app/tiktoken_cache
-    depends_on:
-      - qdrant
-      - redis
+      - postgres
     restart: unless-stopped
     networks:
       - rag-network
 
 volumes:
   qdrant_storage:
-  redis_data:
+  postgres_data:
 
 networks:
   rag-network:

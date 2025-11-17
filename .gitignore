@@ -41,7 +41,11 @@ ENV/
 data/uploads/
 data/processed/
 data/chunks/
-models/
+/models/
+*.pt
+*.pth
+*.onnx
+*.h5
 
 # Testing
 .pytest_cache/

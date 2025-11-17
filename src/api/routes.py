@@ -24,7 +24,7 @@ from src.models.schemas import (
 )
 from src.retrieval import BM25Index, HybridRetriever, VectorStore
 from src.retrieval.generator import Generator
-from src.worker.tasks import process_document_task
+from src.services.document_service import process_document
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +81,7 @@ async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
 
         logger.info(f"Uploaded {file.filename} ({file_type}) - {metadata.document_id}")
 
-        # Enqueue processing task (async)
-        # For now, process synchronously - can be moved to RQ later
-        from src.worker.tasks import process_document
-
+        # Process document synchronously
         try:
             process_document(metadata.document_id, str(file_path))
             status = ProcessingStatus.COMPLETED

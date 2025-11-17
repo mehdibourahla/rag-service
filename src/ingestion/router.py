@@ -6,11 +6,9 @@ from typing import List
 
 from src.ingestion.file_detector import FileDetector
 from src.ingestion.processors import (
-    AudioProcessor,
     BaseProcessor,
     ImageProcessor,
     TextProcessor,
-    VideoProcessor,
 )
 from src.models.schemas import FileType, Modality
 
@@ -25,8 +23,6 @@ class ProcessorRouter:
         self.processors: List[BaseProcessor] = [
             TextProcessor(),
             ImageProcessor(),
-            AudioProcessor(model_size="base"),
-            VideoProcessor(model_size="base"),
         ]
 
     def route(self, file_path: Path) -> tuple[str, Modality]:

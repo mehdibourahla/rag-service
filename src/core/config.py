@@ -31,11 +31,6 @@ class Settings(BaseSettings):
     qdrant_port: int = Field(default=6333, alias="QDRANT_PORT")
     qdrant_collection: str = Field(default="documents", alias="QDRANT_COLLECTION")
 
-    # Redis configuration
-    redis_host: str = Field(default="localhost", alias="REDIS_HOST")
-    redis_port: int = Field(default=6379, alias="REDIS_PORT")
-    redis_db: int = Field(default=0, alias="REDIS_DB")
-
     # OpenAI API
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
@@ -60,11 +55,6 @@ class Settings(BaseSettings):
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.processed_dir.mkdir(parents=True, exist_ok=True)
         self.chunks_dir.mkdir(parents=True, exist_ok=True)
-
-    @property
-    def redis_url(self) -> str:
-        """Get Redis connection URL."""
-        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
     @property
     def qdrant_url(self) -> str:
