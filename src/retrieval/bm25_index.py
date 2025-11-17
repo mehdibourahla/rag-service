@@ -17,14 +17,22 @@ logger = logging.getLogger(__name__)
 class BM25Index:
     """BM25 index for sparse retrieval."""
 
-    def __init__(self, index_path: Path = None):
+    def __init__(self, index_path: Path = None, tenant_id: Optional[UUID] = None):
         """
         Initialize BM25 index.
 
         Args:
             index_path: Path to save/load index (defaults to chunks_dir)
+            tenant_id: Tenant ID for multi-tenant indexing (optional)
         """
-        self.index_path = index_path or settings.chunks_dir / "bm25_index.json"
+        self.tenant_id = tenant_id
+
+        # Use tenant-specific path if tenant_id is provided
+        if tenant_id:
+            self.index_path = index_path or settings.chunks_dir / f"bm25_index_{tenant_id}.json"
+        else:
+            self.index_path = index_path or settings.chunks_dir / "bm25_index.json"
+
         self.corpus: List[str] = []
         self.metadata: List[dict] = []
         self.bm25: Optional[BM25Okapi] = None
@@ -57,32 +65,44 @@ class BM25Index:
             json.dump({"corpus": self.corpus, "metadata": self.metadata}, f)
         logger.info(f"Saved BM25 index to {self.index_path}")
 
-    def add_chunks(self, chunks: List[TextChunk]) -> int:
+    def add_chunks(self, chunks: List[TextChunk], tenant_id: Optional[UUID] = None) -> int:
         """
         Add chunks to BM25 index.
 
         Args:
             chunks: List of TextChunk objects
+            tenant_id: Tenant ID for validation (optional)
 
         Returns:
             Number of chunks added
+
+        Raises:
+            ValueError: If tenant_id mismatch
         """
         if not chunks:
             return 0
 
+        # Validate tenant_id if this is a tenant-specific index
+        if self.tenant_id and tenant_id and self.tenant_id != tenant_id:
+            raise ValueError(f"Tenant ID mismatch: index={self.tenant_id}, chunks={tenant_id}")
+
         for chunk in chunks:
             self.corpus.append(chunk.text)
-            self.metadata.append(
-                {
-                    "chunk_id": str(chunk.metadata.chunk_id),
-                    "document_id": str(chunk.metadata.document_id),
-                    "source": chunk.metadata.source,
-                    "modality": chunk.metadata.modality.value,
-                    "chunk_index": chunk.metadata.chunk_index,
-                    "section_title": chunk.metadata.section_title,
-                    "page_number": chunk.metadata.page_number,
-                }
-            )
+            metadata_dict = {
+                "chunk_id": str(chunk.metadata.chunk_id),
+                "document_id": str(chunk.metadata.document_id),
+                "source": chunk.metadata.source,
+                "modality": chunk.metadata.modality.value,
+                "chunk_index": chunk.metadata.chunk_index,
+                "section_title": chunk.metadata.section_title,
+                "page_number": chunk.metadata.page_number,
+            }
+
+            # Add tenant_id to metadata if provided
+            if tenant_id or self.tenant_id:
+                metadata_dict["tenant_id"] = str(tenant_id or self.tenant_id)
+
+            self.metadata.append(metadata_dict)
 
         # Rebuild BM25 index
         tokenized_corpus = [self._tokenize(doc) for doc in self.corpus]

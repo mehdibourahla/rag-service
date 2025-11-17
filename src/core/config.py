@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Service configuration
-    app_name: str = Field(default="rag-service", alias="APP_NAME")
+    app_name: str = Field(default="pingo-chatbot", alias="APP_NAME")
     app_env: str = Field(default="development", alias="APP_ENV")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     qdrant_host: str = Field(default="localhost", alias="QDRANT_HOST")
     qdrant_port: int = Field(default=6333, alias="QDRANT_PORT")
     qdrant_collection: str = Field(default="documents", alias="QDRANT_COLLECTION")
+
+    # Database configuration
+    database_url: str = Field(
+        default="postgresql://pingo:pingo@localhost:5432/pingo",
+        alias="DATABASE_URL"
+    )
+
+    # Authentication
+    secret_key: str = Field(default="change-this-secret-key-in-production", alias="SECRET_KEY")
+    access_token_expire_minutes: int = Field(default=60 * 24 * 7, alias="ACCESS_TOKEN_EXPIRE_MINUTES")  # 7 days
 
     # OpenAI API
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
