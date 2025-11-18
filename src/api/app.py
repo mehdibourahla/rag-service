@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.routes import router
+from src.api.routes import chat, documents, health, sessions, tenants
 from src.core.config import settings
 
 # Configure logging
@@ -42,9 +42,12 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title=settings.app_name,
-    description="Production-grade multi-modal RAG system",
-    version="0.1.0",
+    description="Multi-tenant AI chatbot platform with agentic RAG",
+    version="0.2.0",
     lifespan=lifespan,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
 )
 
 # CORS middleware
@@ -56,8 +59,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routes
-app.include_router(router, prefix="/api/v1", tags=["rag"])
+# Include all route modules
+app.include_router(health.router, prefix="/api/v1")
+app.include_router(tenants.router, prefix="/api/v1")
+app.include_router(sessions.router, prefix="/api/v1")
+app.include_router(documents.router, prefix="/api/v1")
+app.include_router(chat.router, prefix="/api/v1")
 
 
 @app.get("/")
@@ -65,6 +72,9 @@ async def root():
     """Root endpoint."""
     return {
         "name": settings.app_name,
-        "version": "0.1.0",
+        "version": "0.2.0",
+        "description": "Multi-tenant AI chatbot platform",
         "status": "running",
+        "docs": "/api/docs",
+        "health": "/api/v1/health",
     }
