@@ -32,7 +32,7 @@ class Tenant(Base):
     tenant_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     name = Column(String(255), nullable=False)
     industry = Column(Enum(Industry), nullable=False)
-    status = Column(Enum(TenantStatus), nullable=False, default=TenantStatus.TRIAL)
+    status = Column(Enum(TenantStatus), nullable=False, default=TenantStatus.ACTIVE)
     tier = Column(Enum(TenantTier), nullable=False, default=TenantTier.FREE)
 
     # Contact information
@@ -49,7 +49,7 @@ class Tenant(Base):
     # Timestamps
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
-    trial_ends_at = Column(DateTime, nullable=True)
+    trial_ends_at = Column(DateTime, nullable=True)  # DEPRECATED: Not used, kept for backwards compat
 
     # Metadata
     metadata = Column(JSON, nullable=False, default=dict)

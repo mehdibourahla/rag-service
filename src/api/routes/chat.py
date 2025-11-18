@@ -159,12 +159,10 @@ async def chat_stream(
         retriever = get_tenant_retriever(tenant_id)
         generator = get_generator()
 
-        # Execute agent with ReAct pattern using context-enhanced query
+        # Execute agent with retry logic using context-enhanced query
         executor = AgentExecutor(
             retriever=retriever,
-            max_iterations=2,
-            quality_threshold=0.5,
-            enable_reflection=False,  # Disabled for speed (1 LLM call vs 2-3)
+            max_retries=1,  # Single retry with query expansion if no results
         )
 
         chunks, execution_steps, plan = executor.execute(

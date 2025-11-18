@@ -1,13 +1,12 @@
-.PHONY: help install services start worker stop clean test format lint docker-up docker-down docker-logs docker-restart docker-clean
+.PHONY: help install services start stop clean test format lint docker-up docker-down docker-logs docker-restart docker-clean
 
 help:
 	@echo "RAG Service - Available Commands:"
 	@echo ""
 	@echo "Local Development:"
 	@echo "  make install    - Install dependencies and setup environment"
-	@echo "  make services   - Start Docker services (Qdrant & Redis only)"
+	@echo "  make services   - Start Docker services (Qdrant & PostgreSQL only)"
 	@echo "  make start      - Start the API server (local)"
-	@echo "  make worker     - Start the background worker (local)"
 	@echo ""
 	@echo "Docker (Full Stack):"
 	@echo "  make docker-up       - Build and start ALL services in Docker"
@@ -30,21 +29,17 @@ install:
 	@if [ ! -f .env ]; then cp .env.example .env; echo "Created .env file - please configure it"; fi
 
 services:
-	@echo "Starting Docker services (Qdrant & Redis only)..."
-	docker-compose up -d qdrant redis
+	@echo "Starting Docker services (Qdrant & PostgreSQL only)..."
+	docker-compose up -d qdrant postgres
 	@echo "Waiting for services to be ready..."
 	@sleep 5
 	@echo "Services started!"
 	@echo "Qdrant: http://localhost:6333/dashboard"
-	@echo "Redis: localhost:6379"
+	@echo "PostgreSQL: localhost:5432"
 
 start:
 	@echo "Starting API server..."
 	poetry run python main.py
-
-worker:
-	@echo "Starting background worker..."
-	poetry run python worker.py
 
 stop:
 	@echo "Stopping Docker services..."

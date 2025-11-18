@@ -47,9 +47,6 @@ class TenantService:
             supported_languages=[request.default_language or "en"],
         )
 
-        # Calculate trial end date (30 days from now)
-        trial_ends_at = datetime.utcnow() + timedelta(days=30)
-
         # Create tenant
         tenant = Tenant(
             name=request.name,
@@ -58,7 +55,6 @@ class TenantService:
             contact_name=request.contact_name,
             company_website=str(request.company_website) if request.company_website else None,
             settings=settings.model_dump(),
-            trial_ends_at=trial_ends_at,
         )
 
         db.add(tenant)

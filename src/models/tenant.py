@@ -18,17 +18,14 @@ class TenantStatus(str, Enum):
 
     ACTIVE = "active"
     SUSPENDED = "suspended"
-    TRIAL = "trial"
     DELETED = "deleted"
 
 
 class TenantTier(str, Enum):
-    """Tenant subscription tier."""
+    """Tenant subscription tier (simplified until quotas are enforced)."""
 
     FREE = "free"
-    STARTER = "starter"
-    PROFESSIONAL = "professional"
-    ENTERPRISE = "enterprise"
+    PRO = "pro"
 
 
 class Industry(str, Enum):
@@ -85,7 +82,7 @@ class TenantSettings(BaseModel):
     max_context_length: int = 4000
     response_temperature: float = 0.7
 
-    # Rate limits (per day)
+    # Quotas (not enforced yet - see CRITICAL_GAPS.md)
     max_queries_per_day: int = 1000
     max_documents: int = 100
     max_file_size_mb: int = 10
@@ -102,7 +99,7 @@ class TenantConfig(BaseModel):
     tenant_id: UUID = Field(default_factory=uuid4)
     name: str
     industry: Industry
-    status: TenantStatus = TenantStatus.TRIAL
+    status: TenantStatus = TenantStatus.ACTIVE
     tier: TenantTier = TenantTier.FREE
 
     # Contact information
@@ -119,7 +116,6 @@ class TenantConfig(BaseModel):
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    trial_ends_at: Optional[datetime] = None
 
     # Metadata
     metadata: Dict[str, str] = {}

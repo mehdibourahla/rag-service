@@ -7,7 +7,7 @@ from typing import List
 from src.ingestion.file_detector import FileDetector
 from src.ingestion.processors import (
     BaseProcessor,
-    ImageProcessor,
+    # ImageProcessor,  # REMOVED: Phase 1 is text-only, add back for multi-modal support
     TextProcessor,
 )
 from src.models.schemas import FileType, Modality
@@ -22,7 +22,7 @@ class ProcessorRouter:
         """Initialize router with all processors."""
         self.processors: List[BaseProcessor] = [
             TextProcessor(),
-            ImageProcessor(),
+            # ImageProcessor(),  # REMOVED: Phase 1 is text-only
         ]
 
     def route(self, file_path: Path) -> tuple[str, Modality]:

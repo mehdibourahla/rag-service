@@ -223,12 +223,10 @@ async def chat_stream(
 
         query = user_messages[-1].content
 
-        # Execute agent with ReAct pattern
+        # Execute agent with retry logic
         executor = AgentExecutor(
             retriever=retriever,
-            max_iterations=2,
-            quality_threshold=0.5,
-            enable_reflection=False,  # Disabled for speed (1 LLM call vs 2-3)
+            max_retries=1,  # Single retry with query expansion if no results
         )
 
         chunks, execution_steps, plan = executor.execute(

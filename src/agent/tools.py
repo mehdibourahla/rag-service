@@ -31,20 +31,6 @@ class QueryDecomposition(BaseModel):
     )
 
 
-class QualityEvaluation(BaseModel):
-    """Quality assessment of retrieval results."""
-
-    score: float = Field(ge=0.0, le=1.0, description="Quality score 0-1")
-    is_adequate: bool = Field(description="Whether results are good enough")
-    missing_aspects: List[str] = Field(
-        description="What's missing or unclear in results"
-    )
-    suggested_action: str = Field(
-        description="What to do next: 'proceed', 'reformulate', 'expand', 'decompose', 'clarify'"
-    )
-    reasoning: str = Field(description="Explanation of the assessment")
-
-
 class AgentTools:
     """Tools for agent execution and reflection."""
 
@@ -157,79 +143,3 @@ If the query is already simple, just return it as a single sub-query."""
                 synthesis_strategy=f"Fallback: {str(e)}",
             )
 
-    def evaluate_quality(
-        self, query: str, retrieved_chunks: List[str], attempt: int = 1
-    ) -> QualityEvaluation:
-        """
-        Evaluate quality of retrieved results.
-
-        Args:
-            query: Original query
-            retrieved_chunks: Text content of retrieved chunks
-            attempt: Current attempt number (for retry logic)
-
-        Returns:
-            QualityEvaluation with assessment
-        """
-        client = self._get_client()
-
-        system_message = """You are an expert at evaluating information retrieval quality.
-
-Assess whether the retrieved documents adequately answer the user's query.
-
-Score criteria:
-- 1.0: Perfect, comprehensive answer available
-- 0.7-0.9: Good, most information present
-- 0.4-0.6: Partial, some relevant info but gaps
-- 0.0-0.3: Poor, missing critical information
-
-Suggested actions:
-- 'proceed': Results are good enough, generate answer
-- 'reformulate': Try different phrasing
-- 'expand': Add query variations
-- 'decompose': Break into sub-queries
-- 'clarify': Ask user for more details"""
-
-        # Truncate chunks for evaluation (save tokens)
-        chunk_previews = [chunk[:200] + "..." for chunk in retrieved_chunks[:5]]
-        chunks_text = "\n\n".join(
-            [f"Chunk {i+1}: {preview}" for i, preview in enumerate(chunk_previews)]
-        )
-
-        user_prompt = f"""Query: "{query}"
-Attempt: {attempt}
-
-Retrieved documents:
-{chunks_text}
-
-Evaluate the quality of these results."""
-
-        logger.info(f"Evaluating retrieval quality for: {query[:50]}...")
-
-        try:
-            completion = client.beta.chat.completions.parse(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format=QualityEvaluation,
-                temperature=0.3,
-            )
-
-            evaluation = completion.choices[0].message.parsed
-            logger.info(
-                f"Quality score: {evaluation.score:.2f}, "
-                f"Action: {evaluation.suggested_action}"
-            )
-            return evaluation
-
-        except Exception as e:
-            logger.error(f"Error evaluating quality: {e}")
-            return QualityEvaluation(
-                score=0.5,
-                is_adequate=True,
-                missing_aspects=[],
-                suggested_action="proceed",
-                reasoning=f"Fallback: {str(e)}",
-            )
