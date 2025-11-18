@@ -251,3 +251,56 @@ class VectorStore:
 
         collection_info = self.client.get_collection(self.collection_name)
         return collection_info.points_count
+
+    def clear_all(self, tenant_id: Optional[UUID] = None) -> bool:
+        """
+        Clear all chunks from the vector store.
+        If tenant_id is provided, only clear that tenant's data.
+        Otherwise, delete and recreate the entire collection.
+
+        Args:
+            tenant_id: Optional tenant ID to clear only that tenant's data
+
+        Returns:
+            True if successful
+        """
+        if tenant_id:
+            # Clear only this tenant's data
+            from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+            logger.info(f"Clearing chunks for tenant {tenant_id} from collection {self.collection_name}")
+
+            try:
+                self.client.delete(
+                    collection_name=self.collection_name,
+                    points_selector=Filter(
+                        must=[
+                            FieldCondition(
+                                key="tenant_id",
+                                match=MatchValue(value=str(tenant_id)),
+                            )
+                        ]
+                    ),
+                )
+                logger.info(f"Cleared tenant {tenant_id} data successfully")
+                return True
+            except Exception as e:
+                logger.error(f"Error clearing tenant data: {e}")
+                return False
+        else:
+            # Clear entire collection
+            logger.info(f"Clearing all chunks from collection {self.collection_name}")
+
+            try:
+                # Delete the collection
+                self.client.delete_collection(collection_name=self.collection_name)
+                logger.info(f"Deleted collection {self.collection_name}")
+
+                # Recreate the collection
+                self._ensure_collection()
+                logger.info(f"Recreated collection {self.collection_name}")
+
+                return True
+            except Exception as e:
+                logger.error(f"Error clearing vector store: {e}")
+                return False

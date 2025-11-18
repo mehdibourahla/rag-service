@@ -192,3 +192,27 @@ class BM25Index:
     def count(self) -> int:
         """Get total number of chunks in index."""
         return len(self.corpus)
+
+    def clear_all(self) -> bool:
+        """
+        Clear all chunks from the BM25 index.
+        Note: This instance is already tenant-scoped if tenant_id was provided during init.
+
+        Returns:
+            True if successful
+        """
+        logger.info("Clearing all chunks from BM25 index")
+
+        try:
+            self.corpus = []
+            self.metadata = []
+            self.bm25 = None
+
+            # Save empty index to disk
+            self._save_index()
+
+            logger.info("BM25 index cleared successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing BM25 index: {e}")
+            return False

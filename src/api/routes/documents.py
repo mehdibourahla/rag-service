@@ -153,3 +153,54 @@ async def get_document_stats(
     except Exception as e:
         logger.error(f"Stats error for tenant {tenant_id}: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.delete("/clear", status_code=status.HTTP_200_OK)
+async def clear_all_documents(
+    tenant_id: UUID = Depends(get_current_tenant_id),
+    db: DBSession = Depends(get_db)
+):
+    """
+    Clear all documents and chunks for the tenant.
+
+    This will delete all documents from the knowledge base for this tenant only.
+
+    Requires: X-API-Key header
+
+    Args:
+        tenant_id: Tenant ID (from API key)
+        db: Database session
+
+    Returns:
+        Status of the operation
+    """
+    try:
+        vector_store = get_vector_store()
+        bm25_index = get_tenant_bm25_index(tenant_id)
+
+        logger.info(f"Clearing all indexes for tenant {tenant_id}...")
+
+        # Clear both stores (tenant-scoped)
+        vector_success = vector_store.clear_all(tenant_id=tenant_id)
+        bm25_success = bm25_index.clear_all()
+
+        if vector_success and bm25_success:
+            logger.info(f"All indexes cleared successfully for tenant {tenant_id}")
+            return {
+                "message": "All documents cleared successfully",
+                "tenant_id": str(tenant_id),
+                "vector_store_cleared": True,
+                "bm25_index_cleared": True,
+            }
+        else:
+            logger.warning(f"Some indexes failed to clear for tenant {tenant_id}")
+            return {
+                "message": "Some indexes failed to clear",
+                "tenant_id": str(tenant_id),
+                "vector_store_cleared": vector_success,
+                "bm25_index_cleared": bm25_success,
+            }
+
+    except Exception as e:
+        logger.error(f"Clear indexes error for tenant {tenant_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

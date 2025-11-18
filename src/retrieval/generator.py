@@ -56,6 +56,8 @@ class Generator:
         Returns:
             Formatted prompt
         """
+        from datetime import datetime
+
         # Build context from chunks
         context_parts = []
         for i, chunk in enumerate(chunks, 1):
@@ -66,8 +68,12 @@ class Generator:
 
         context = "\n".join(context_parts)
 
+        # Get current date
+        current_date = datetime.now().strftime("%B %d, %Y")
+
         # System message and user prompt
-        system_message = """You are a helpful AI assistant that answers questions based on provided context.
+        system_message = f"""You are a helpful AI assistant that answers questions based on provided context.
+Today's date is {current_date}. Use this for any date-related calculations (e.g., ages, time periods).
 Always cite your sources using the source numbers [1], [2], etc.
 If the context doesn't contain relevant information, state that clearly.
 Provide accurate, concise answers based on the evidence in the context."""
@@ -229,4 +235,62 @@ Please answer the question based on the provided context. Indicate which sources
 
         except Exception as e:
             logger.error(f"Error streaming answer: {e}")
+            yield f"\n\nError: {str(e)}"
+
+    def generate_vanilla_stream(
+        self,
+        query: str,
+        conversation_history: list = None,
+        max_tokens: int = 1000,
+        temperature: float = 0.7,
+    ) -> Iterator[str]:
+        """
+        Generate answer without RAG context (vanilla LLM mode).
+
+        Args:
+            query: User query
+            conversation_history: List of previous messages [{"role": "user/assistant", "content": "..."}]
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature (0.0-2.0)
+
+        Yields:
+            Generated text chunks
+        """
+        from datetime import datetime
+
+        client = self._get_client()
+
+        # Get current date
+        current_date = datetime.now().strftime("%B %d, %Y")
+
+        system_message = f"""You are a helpful AI assistant. Answer questions directly and conversationally using your general knowledge.
+Today's date is {current_date}. Use this for any date-related calculations."""
+
+        # Build message history
+        messages = [{"role": "system", "content": system_message}]
+
+        if conversation_history:
+            messages.extend(conversation_history)
+
+        messages.append({"role": "user", "content": query})
+
+        logger.info(f"Streaming vanilla answer for query: '{query[:50]}...' using {self.model_name}")
+
+        try:
+            # Create streaming completion
+            stream = client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True,
+            )
+
+            # Stream tokens
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+
+        except Exception as e:
+            logger.error(f"Error streaming vanilla answer: {e}")
             yield f"\n\nError: {str(e)}"

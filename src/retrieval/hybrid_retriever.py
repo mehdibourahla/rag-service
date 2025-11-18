@@ -121,7 +121,7 @@ class HybridRetriever:
 
     def _rerank_with_llm(self, query: str, candidates: List[dict]) -> List[dict]:
         """
-        Rerank candidates using LLM-based relevance scoring.
+        Rerank candidates using LLM-based relevance scoring (batched for speed).
 
         Args:
             query: User query
@@ -132,45 +132,68 @@ class HybridRetriever:
         """
         client = self._get_client()
 
-        logger.info(f"Reranking {len(candidates)} candidates with LLM")
+        logger.info(f"Reranking {len(candidates)} candidates with LLM (batched)")
 
-        reranked = []
-        for candidate in candidates:
-            try:
-                # Ask LLM to score relevance
-                completion = client.beta.chat.completions.parse(
-                    model=settings.llm_model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a relevance scoring system. Given a query and a text passage, score how relevant the passage is to answering the query.",
-                        },
-                        {
-                            "role": "user",
-                            "content": f"Query: {query}\n\nPassage: {candidate['text']}\n\nScore the relevance of this passage to the query.",
-                        },
-                    ],
-                    response_format=RelevanceScore,
-                    max_tokens=150,
-                    temperature=0.0,
-                )
+        # Build a single prompt with all candidates
+        passages_text = "\n\n".join([
+            f"[{i}] {candidate['text'][:500]}..."  # Truncate to 500 chars for speed
+            for i, candidate in enumerate(candidates)
+        ])
 
-                score_result = completion.choices[0].message.parsed
-                candidate["llm_score"] = score_result.relevance_score
-                candidate["llm_reasoning"] = score_result.reasoning
-                reranked.append(candidate)
+        system_prompt = """You are a relevance ranking system. Given a query and multiple passages,
+rank them by relevance to answering the query. Return a JSON array of objects with:
+- passage_index: the index number
+- score: relevance score from 0.0 to 1.0
+- reasoning: brief explanation
 
-            except Exception as e:
-                logger.warning(f"Failed to score candidate with LLM: {e}")
-                # Keep candidate with original score
+Rank all passages, most relevant first."""
+
+        user_prompt = f"""Query: {query}
+
+Passages:
+{passages_text}
+
+Rank these passages by relevance."""
+
+        try:
+            # Single LLM call for all candidates
+            completion = client.chat.completions.create(
+                model=settings.llm_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+                max_tokens=1000,
+                temperature=0.0,
+            )
+
+            # Parse results
+            import json
+            result = json.loads(completion.choices[0].message.content)
+            rankings = result.get("rankings", [])
+
+            # Map scores back to candidates
+            score_map = {r["passage_index"]: r for r in rankings}
+            for i, candidate in enumerate(candidates):
+                if i in score_map:
+                    candidate["llm_score"] = score_map[i]["score"]
+                    candidate["llm_reasoning"] = score_map[i].get("reasoning", "")
+                else:
+                    candidate["llm_score"] = candidate.get("rrf_score", 0.5)
+                    candidate["llm_reasoning"] = "Not ranked"
+
+        except Exception as e:
+            logger.warning(f"Batch reranking failed: {e}, falling back to RRF scores")
+            # Use RRF scores as fallback
+            for candidate in candidates:
                 candidate["llm_score"] = candidate.get("rrf_score", 0.5)
-                candidate["llm_reasoning"] = "LLM scoring failed"
-                reranked.append(candidate)
+                candidate["llm_reasoning"] = "Batch scoring failed, using RRF"
 
         # Sort by LLM score
-        reranked.sort(key=lambda x: x["llm_score"], reverse=True)
+        candidates.sort(key=lambda x: x["llm_score"], reverse=True)
 
-        return reranked
+        return candidates
 
     def retrieve(
         self,
@@ -209,8 +232,9 @@ class HybridRetriever:
         # 3. Reciprocal rank fusion
         fused_results = self._reciprocal_rank_fusion(dense_results, sparse_results)
 
-        # Take top candidates for reranking
-        candidates = fused_results[:min(len(fused_results), retrieval_k)]
+        # Take top candidates for reranking (limit to rerank_top_k for speed)
+        rerank_k = settings.rerank_top_k
+        candidates = fused_results[:min(len(fused_results), rerank_k)]
 
         # 4. LLM-based reranking (optional)
         if use_reranker and candidates and len(candidates) > 1:

@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
-from src.agent import Agent, ActionType, AgentExecutor
+from src.agent import Agent, ActionType, AgentExecutor, ConversationMemory
 from src.api.dependencies import get_embedder, get_generator, get_tenant_retriever
 from src.core.config import settings
 from src.db import get_db
@@ -146,11 +146,20 @@ async def chat_stream(
             db, session_id, tenant_id, MessageRole.USER, query
         )
 
+        # Load conversation history from database and manage context
+        from src.agent.memory import Message as MemMessage
+        memory = ConversationMemory(max_recent_messages=10)
+
+        # Convert request messages to memory format
+        msg_objects = [MemMessage(role=m.role, content=m.content) for m in request.messages]
+        optimized_context = memory.manage_context(msg_objects)
+        context_enhanced_query = memory.extract_query_context(optimized_context, query)
+
         # Get tenant-specific retriever
         retriever = get_tenant_retriever(tenant_id)
         generator = get_generator()
 
-        # Execute agent with ReAct pattern
+        # Execute agent with ReAct pattern using context-enhanced query
         executor = AgentExecutor(
             retriever=retriever,
             max_iterations=2,
@@ -159,7 +168,7 @@ async def chat_stream(
         )
 
         chunks, execution_steps, plan = executor.execute(
-            query=query, top_k=settings.final_top_k
+            query=context_enhanced_query, top_k=settings.final_top_k
         )
 
         logger.info(
@@ -167,6 +176,27 @@ async def chat_stream(
             f"needs_retrieval={plan.needs_retrieval}, "
             f"chunks_found={len(chunks)}"
         )
+
+        # Prepare enhanced source metadata for response
+        sources_metadata = []
+        if plan.needs_retrieval and chunks:
+            for chunk in chunks:
+                filename = chunk.metadata.source.split("/")[-1]
+                page_info = f" (Page {chunk.metadata.page_number})" if chunk.metadata.page_number else ""
+                score_info = f" [{(chunk.score * 100):.0f}%]"
+
+                # Truncate chunk text for preview (first 200 chars)
+                text_preview = chunk.text[:200] + "..." if len(chunk.text) > 200 else chunk.text
+
+                sources_metadata.append({
+                    "chunk_id": str(chunk.metadata.chunk_id),
+                    "source": filename,
+                    "title": f"{filename}{page_info}{score_info}",
+                    "page_number": chunk.metadata.page_number,
+                    "score": chunk.score,
+                    "modality": chunk.metadata.modality.value,
+                    "text_preview": text_preview,
+                })
 
         async def generate():
             """Generate AI SDK compatible streaming response."""
@@ -180,11 +210,12 @@ async def chat_stream(
 
                 if plan.needs_retrieval:
                     if not chunks:
-                        response = "I couldn't find any relevant information in the uploaded documents for your question. The agent tried multiple search strategies but couldn't locate useful content. Could you try rephrasing or ask about something else?"
-                        for char in response:
-                            delta_event = {"type": "text-delta", "id": text_id, "delta": char}
+                        # No documents found - fall back to general knowledge
+                        logger.info("No documents found, using general knowledge")
+                        for token in generator.generate_stream(query=query, chunks=[]):
+                            delta_event = {"type": "text-delta", "id": text_id, "delta": token}
                             yield f'data: {json.dumps(delta_event)}\n\n'
-                            full_response += char
+                            full_response += token
                     else:
                         logger.info(f"Generating answer from {len(chunks)} chunks")
                         for token in generator.generate_stream(query=query, chunks=chunks):
@@ -192,28 +223,42 @@ async def chat_stream(
                             yield f'data: {json.dumps(delta_event)}\n\n'
                             full_response += token
 
-                        # Send source documents
-                        for chunk in chunks:
-                            filename = chunk.metadata.source.split("/")[-1]
-                            page_info = f" (Page {chunk.metadata.page_number})" if chunk.metadata.page_number else ""
-                            score_info = f" [{(chunk.score * 100):.0f}%]"
-
+                        # Send enhanced source documents
+                        for source_meta in sources_metadata:
                             source_event = {
                                 "type": "source-document",
-                                "sourceId": str(chunk.metadata.chunk_id),
+                                "sourceId": source_meta["chunk_id"],
                                 "mediaType": "file",
-                                "title": f"{filename}{page_info}{score_info}",
+                                "title": source_meta["title"],
+                                "page_number": source_meta["page_number"],
+                                "score": source_meta["score"],
+                                "modality": source_meta["modality"],
+                                "text_preview": source_meta["text_preview"],
                             }
                             yield f'data: {json.dumps(source_event)}\n\n'
 
                 else:
                     logger.info(f"Executing {plan.action} without RAG")
-                    response = plan.suggested_response if plan.suggested_response else generator.generate(query=query, chunks=[])
-
-                    for char in response:
-                        delta_event = {"type": "text-delta", "id": text_id, "delta": char}
-                        yield f'data: {json.dumps(delta_event)}\n\n'
-                        full_response += char
+                    if plan.suggested_response:
+                        # Use pre-generated response (e.g., for greetings)
+                        for char in plan.suggested_response:
+                            delta_event = {"type": "text-delta", "id": text_id, "delta": char}
+                            yield f'data: {json.dumps(delta_event)}\n\n'
+                            full_response += char
+                    else:
+                        # Use vanilla LLM streaming (no RAG prompt) with conversation history
+                        # Convert request messages to OpenAI format (exclude the current query)
+                        conversation_history = [
+                            {"role": msg.role, "content": msg.content}
+                            for msg in request.messages[:-1]  # Exclude last message (current query)
+                        ]
+                        for token in generator.generate_vanilla_stream(
+                            query=query,
+                            conversation_history=conversation_history
+                        ):
+                            delta_event = {"type": "text-delta", "id": text_id, "delta": token}
+                            yield f'data: {json.dumps(delta_event)}\n\n'
+                            full_response += token
 
                 # End text block
                 end_event = {"type": "text-end", "id": text_id}
@@ -236,15 +281,27 @@ async def chat_stream(
             finally:
                 yield 'data: [DONE]\n\n'
 
+        # Prepare response headers with enhanced metadata
+        response_headers = {
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Vercel-AI-Data-Stream": "v1",
+            "X-Session-Id": str(session_id),  # Return session ID to client
+        }
+
+        # Add source metadata to headers if available
+        if sources_metadata:
+            response_headers["X-Source-Count"] = str(len(sources_metadata))
+            # Include compact source info in header (just filenames and scores)
+            sources_compact = [
+                f"{s['source']}:{s['score']:.2f}" for s in sources_metadata
+            ]
+            response_headers["X-Sources"] = ";".join(sources_compact[:5])  # Limit to 5 for header size
+
         return StreamingResponse(
             generate(),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Vercel-AI-Data-Stream": "v1",
-                "X-Session-Id": str(session_id),  # Return session ID to client
-            }
+            headers=response_headers
         )
 
     except Exception as e:

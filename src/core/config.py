@@ -54,6 +54,7 @@ class Settings(BaseSettings):
 
     # Retrieval configuration
     retrieval_top_k: int = Field(default=20, alias="RETRIEVAL_TOP_K")
+    rerank_top_k: int = Field(default=10, alias="RERANK_TOP_K")  # Reduce candidates before LLM reranking
     final_top_k: int = Field(default=5, alias="FINAL_TOP_K")
 
     # Processing configuration
