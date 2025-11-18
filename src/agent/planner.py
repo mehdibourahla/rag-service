@@ -76,20 +76,14 @@ class Agent:
         # Build planning prompt
         system_message = """You are an intelligent agent that analyzes user queries for a RAG system.
 
-Your job is to determine:
-1. What type of query this is (greeting, question about documents, general chat, or clarification needed)
-2. Whether RAG retrieval from the knowledge base is needed
-3. For simple queries (greetings), suggest an appropriate response
-
-The RAG system has access to uploaded documents (PDFs, text files, images, audio, video).
+Your job is to determine the query type:
 
 Query types:
-- GREETING: Simple greetings, thanks, goodbyes (no retrieval needed)
-- RAG_QUERY: Questions that require information from uploaded documents (needs retrieval)
-- GENERAL_CHAT: General questions not related to documents (no retrieval needed)
-- CLARIFICATION: Ambiguous queries that need clarification (no retrieval needed)
+- GREETING: Simple greetings, thanks, goodbyes (no retrieval)
+- RAG_QUERY: Any informational question (retrieval attempted, falls back to general knowledge if no documents found)
+- CLARIFICATION: Ambiguous queries needing clarification (no retrieval)
 
-Analyze carefully and provide your reasoning."""
+Default to RAG_QUERY for questions - the system will handle fallback to general knowledge."""
 
         user_prompt = f"""Query: "{query}"
 

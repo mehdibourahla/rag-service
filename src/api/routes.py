@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.agent import Agent, ActionType, AgentExecutor
+from src.agent import Agent, ActionType, AgentExecutor, ConversationMemory
 from src.api.dependencies import get_embedder, get_generator, get_retriever
 from src.core.config import settings
 from src.ingestion import Embedder, ProcessorRouter, TextChunker
@@ -43,6 +43,7 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     """Chat request format compatible with AI SDK."""
     messages: List[Message]
+    use_rag: bool = True  # Default to RAG-augmented
 
     class Config:
         extra = "allow"  # Allow extra fields from AI SDK
@@ -201,6 +202,48 @@ async def delete_document(document_id: UUID):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/indexes/clear")
+async def clear_all_indexes():
+    """
+    Clear all indexes (vector store and BM25).
+
+    This will delete all documents and chunks from the knowledge base.
+
+    Returns:
+        Status of the operation
+    """
+    try:
+        from src.api.dependencies import get_bm25_index, get_vector_store
+
+        vector_store = get_vector_store()
+        bm25_index = get_bm25_index()
+
+        logger.info("Clearing all indexes...")
+
+        # Clear both stores
+        vector_success = vector_store.clear_all()
+        bm25_success = bm25_index.clear_all()
+
+        if vector_success and bm25_success:
+            logger.info("All indexes cleared successfully")
+            return {
+                "message": "All indexes cleared successfully",
+                "vector_store_cleared": True,
+                "bm25_index_cleared": True,
+            }
+        else:
+            logger.warning("Some indexes failed to clear")
+            return {
+                "message": "Some indexes failed to clear",
+                "vector_store_cleared": vector_success,
+                "bm25_index_cleared": bm25_success,
+            }
+
+    except Exception as e:
+        logger.error(f"Clear indexes error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/chat")
 async def chat_stream(
     request: ChatRequest,
@@ -219,24 +262,40 @@ async def chat_stream(
         StreamingResponse with AI SDK Data Stream Protocol format
     """
     try:
-        # Extract the last user message as the query
+        logger.info(f"Received use_rag parameter: {request.use_rag}")
         user_messages = [msg for msg in request.messages if msg.role == "user"]
         if not user_messages:
             raise HTTPException(status_code=400, detail="No user message found")
 
         query = user_messages[-1].content
 
-        # Execute agent with ReAct pattern
+        # Manage conversation context
+        from src.agent.memory import Message as MemMessage
+        memory = ConversationMemory(max_recent_messages=10)
+        msg_objects = [MemMessage(role=m.role, content=m.content) for m in request.messages]
+        optimized_context = memory.manage_context(msg_objects)
+        context_enhanced_query = memory.extract_query_context(optimized_context, query)
+
+        # Execute agent planning
         executor = AgentExecutor(
             retriever=retriever,
             max_iterations=2,
             quality_threshold=0.5,
-            enable_reflection=False,  # Disabled for speed (1 LLM call vs 2-3)
+            enable_reflection=False,
         )
 
-        chunks, execution_steps, plan = executor.execute(
-            query=query, top_k=settings.final_top_k
-        )
+        # Only execute retrieval if use_rag is True
+        if request.use_rag:
+            chunks, execution_steps, plan = executor.execute(
+                query=context_enhanced_query, top_k=settings.final_top_k
+            )
+        else:
+            # Skip retrieval, use vanilla LLM
+            plan = executor.agent.plan(query=context_enhanced_query)
+            chunks = []
+            execution_steps = []
+            # Force general chat mode
+            plan.needs_retrieval = False
 
         logger.info(
             f"Agent execution completed: action={plan.action}, "
@@ -244,6 +303,27 @@ async def chat_stream(
             f"steps_taken={len(execution_steps)}, "
             f"chunks_found={len(chunks)}"
         )
+
+        # Prepare sources metadata for response header
+        sources_metadata = []
+        if plan.needs_retrieval and chunks:
+            for chunk in chunks:
+                filename = chunk.metadata.source.split("/")[-1]
+                page_info = f" (Page {chunk.metadata.page_number})" if chunk.metadata.page_number else ""
+                score_info = f" [{(chunk.score * 100):.0f}%]"
+
+                # Truncate chunk text for preview (first 200 chars)
+                text_preview = chunk.text[:200] + "..." if len(chunk.text) > 200 else chunk.text
+
+                sources_metadata.append({
+                    "chunk_id": str(chunk.metadata.chunk_id),
+                    "source": filename,
+                    "title": f"{filename}{page_info}{score_info}",
+                    "page_number": chunk.metadata.page_number,
+                    "score": chunk.score,
+                    "modality": chunk.metadata.modality.value,
+                    "text_preview": text_preview,
+                })
 
         async def generate():
             """Generate AI SDK compatible streaming response."""
@@ -257,36 +337,38 @@ async def chat_stream(
 
                 if plan.needs_retrieval:
                     if not chunks:
-                        response = "I couldn't find any relevant information in the uploaded documents for your question. The agent tried multiple search strategies but couldn't locate useful content. Could you try rephrasing or ask about something else?"
-                        for char in response:
-                            delta_event = {"type": "text-delta", "id": text_id, "delta": char}
+                        logger.info("No documents found, using general knowledge")
+                        for token in generator.generate_stream(query=query, chunks=[]):
+                            delta_event = {"type": "text-delta", "id": text_id, "delta": token}
                             yield f'data: {json.dumps(delta_event)}\n\n'
                     else:
                         logger.info(f"Generating answer from {len(chunks)} chunks")
+
+                        # Stream the text response
                         for token in generator.generate_stream(query=query, chunks=chunks):
                             delta_event = {"type": "text-delta", "id": text_id, "delta": token}
                             yield f'data: {json.dumps(delta_event)}\n\n'
 
-                        for chunk in chunks:
-                            filename = chunk.metadata.source.split("/")[-1]
-                            page_info = f" (Page {chunk.metadata.page_number})" if chunk.metadata.page_number else ""
-                            score_info = f" [{(chunk.score * 100):.0f}%]"
-
-                            source_event = {
-                                "type": "source-document",
-                                "sourceId": str(chunk.metadata.chunk_id),
-                                "mediaType": "file",
-                                "title": f"{filename}{page_info}{score_info}",
-                            }
-                            yield f'data: {json.dumps(source_event)}\n\n'
-
                 else:
                     logger.info(f"Executing {plan.action} without RAG")
-                    response = plan.suggested_response if plan.suggested_response else generator.generate(query=query, chunks=[])
-
-                    for char in response:
-                        delta_event = {"type": "text-delta", "id": text_id, "delta": char}
-                        yield f'data: {json.dumps(delta_event)}\n\n'
+                    if plan.suggested_response:
+                        # Use pre-generated response (e.g., for greetings)
+                        for char in plan.suggested_response:
+                            delta_event = {"type": "text-delta", "id": text_id, "delta": char}
+                            yield f'data: {json.dumps(delta_event)}\n\n'
+                    else:
+                        # Use vanilla LLM streaming (no RAG prompt) with conversation history
+                        # Convert request messages to OpenAI format (exclude the current query)
+                        conversation_history = [
+                            {"role": msg.role, "content": msg.content}
+                            for msg in request.messages[:-1]  # Exclude last message (current query)
+                        ]
+                        for token in generator.generate_vanilla_stream(
+                            query=query,
+                            conversation_history=conversation_history
+                        ):
+                            delta_event = {"type": "text-delta", "id": text_id, "delta": token}
+                            yield f'data: {json.dumps(delta_event)}\n\n'
 
                 end_event = {"type": "text-end", "id": text_id}
                 yield f'data: {json.dumps(end_event)}\n\n'
@@ -297,14 +379,23 @@ async def chat_stream(
             finally:
                 yield 'data: [DONE]\n\n'
 
+        # Prepare headers with sources metadata
+        response_headers = {
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "x-vercel-ai-data-stream": "v1",
+        }
+
+        # Add sources as a custom header (URL-encoded JSON)
+        if sources_metadata:
+            import urllib.parse
+            sources_json = json.dumps(sources_metadata)
+            response_headers["x-rag-sources"] = urllib.parse.quote(sources_json)
+
         return StreamingResponse(
             generate(),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "x-vercel-ai-data-stream": "v1",
-            }
+            headers=response_headers
         )
 
     except Exception as e:

@@ -175,3 +175,26 @@ class VectorStore:
         """Get total number of chunks in store."""
         collection_info = self.client.get_collection(self.collection_name)
         return collection_info.points_count
+
+    def clear_all(self) -> bool:
+        """
+        Clear all chunks from the vector store by deleting and recreating the collection.
+
+        Returns:
+            True if successful
+        """
+        logger.info(f"Clearing all chunks from collection {self.collection_name}")
+
+        try:
+            # Delete the collection
+            self.client.delete_collection(collection_name=self.collection_name)
+            logger.info(f"Deleted collection {self.collection_name}")
+
+            # Recreate the collection
+            self._ensure_collection()
+            logger.info(f"Recreated collection {self.collection_name}")
+
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing vector store: {e}")
+            return False
