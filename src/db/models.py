@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from src.db.base import Base
+from src.models.job import JobStatus, JobType
 from src.models.session import EndReason, FeedbackType, MessageRole, SessionStatus
 from src.models.tenant import Industry, TenantStatus, TenantTier
 
@@ -171,3 +172,32 @@ class MessageFeedback(Base):
 
     def __repr__(self) -> str:
         return f"<MessageFeedback(id={self.feedback_id}, type={self.feedback_type}, value='{self.value}')>"
+
+
+class Job(Base):
+    """Background jobs for async processing."""
+
+    __tablename__ = "jobs"
+    __allow_unmapped__ = True
+
+    job_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
+
+    job_type = Column(Enum(JobType), nullable=False)
+    status = Column(Enum(JobStatus), nullable=False, default=JobStatus.PENDING)
+
+    document_id = Column(UUID(as_uuid=True), nullable=True)
+    file_path = Column(String(1024), nullable=True)
+
+    result = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    progress = Column(Float, nullable=True)
+    job_metadata = Column("metadata", JSON, nullable=False, default=dict)
+
+    def __repr__(self) -> str:
+        return f"<Job(id={self.job_id}, type={self.job_type}, status={self.status})>"

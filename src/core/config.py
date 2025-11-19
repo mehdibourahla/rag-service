@@ -37,12 +37,21 @@ class Settings(BaseSettings):
         alias="DATABASE_URL"
     )
 
+    # Redis configuration (for job queue)
+    redis_host: str = Field(default="localhost", alias="REDIS_HOST")
+    redis_port: int = Field(default=6379, alias="REDIS_PORT")
+    redis_db: int = Field(default=0, alias="REDIS_DB")
+    redis_password: str = Field(default="", alias="REDIS_PASSWORD")
+
     # Authentication
     secret_key: str = Field(default="change-this-secret-key-in-production", alias="SECRET_KEY")
     access_token_expire_minutes: int = Field(default=60 * 24 * 7, alias="ACCESS_TOKEN_EXPIRE_MINUTES")  # 7 days
 
     # OpenAI API
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+
+    # Sentry (optional)
+    sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
 
     # Model configurations
     embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
@@ -98,6 +107,13 @@ class Settings(BaseSettings):
     def qdrant_url(self) -> str:
         """Get Qdrant connection URL."""
         return f"http://{self.qdrant_host}:{self.qdrant_port}"
+
+    @property
+    def redis_url(self) -> str:
+        """Get Redis connection URL."""
+        if self.redis_password:
+            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
     def get_allowed_origins(self) -> list[str]:
         """Parse ALLOWED_ORIGINS from comma-separated string."""

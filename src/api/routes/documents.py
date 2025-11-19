@@ -3,7 +3,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session as DBSession
 
 from src.api.dependencies import get_tenant_bm25_index, get_vector_store
@@ -12,12 +12,15 @@ from src.db.session import get_db
 from src.ingestion.file_detector import FileDetector
 from src.middleware.rate_limit import get_tenant_rate_limit, limiter
 from src.middleware.tenant import get_current_tenant_id
+from src.models.job import JobType
 from src.models.schemas import (
     DocumentMetadata,
     ProcessingStatus,
     UploadResponse,
 )
 from src.services.document_service import process_document
+from src.services.job_service import JobService
+from src.workers.queue import get_job_queue
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 @router.post("/upload", response_model=UploadResponse)
 @limiter.limit(get_tenant_rate_limit("upload"))
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     tenant_id: UUID = Depends(get_current_tenant_id),
     db: DBSession = Depends(get_db)
@@ -70,24 +74,70 @@ async def upload_document(
 
         logger.info(f"Tenant {tenant_id} uploaded {file.filename} ({file_type}) - {metadata.document_id}")
 
-        # Process document (tenant-scoped)
-        try:
-            process_document(metadata.document_id, str(file_path), tenant_id=tenant_id)
-            status_value = ProcessingStatus.COMPLETED
-            message = "Document processed successfully"
-        except Exception as e:
-            logger.error(f"Error processing document for tenant {tenant_id}: {e}")
-            status_value = ProcessingStatus.FAILED
-            message = f"Processing failed: {str(e)}"
-
-        return UploadResponse(
+        # Create background job for processing
+        job = JobService.create_job(
+            db=db,
+            tenant_id=tenant_id,
+            job_type=JobType.DOCUMENT_UPLOAD,
             document_id=metadata.document_id,
-            filename=metadata.filename,
-            file_type=metadata.file_type,
-            size_bytes=metadata.size_bytes,
-            status=status_value,
-            message=message,
+            file_path=str(file_path),
+            metadata={
+                "filename": file.filename,
+                "file_type": file_type,
+                "size_bytes": len(content),
+            },
         )
+
+        # Enqueue job to Redis Queue
+        try:
+            queue = get_job_queue()
+            queue.enqueue_document_processing(
+                job_id=job.job_id,
+                document_id=metadata.document_id,
+                file_path=str(file_path),
+                tenant_id=tenant_id,
+            )
+
+            logger.info(
+                f"Enqueued document processing for tenant {tenant_id}: "
+                f"job={job.job_id}, document={metadata.document_id}"
+            )
+
+            return UploadResponse(
+                document_id=metadata.document_id,
+                filename=metadata.filename,
+                file_type=metadata.file_type,
+                size_bytes=metadata.size_bytes,
+                status=ProcessingStatus.PENDING,
+                message="Document upload accepted. Processing in background.",
+                job_id=job.job_id,
+            )
+
+        except Exception as e:
+            # If enqueueing fails, fall back to sync processing
+            logger.warning(
+                f"Failed to enqueue job (falling back to sync): {e}",
+                exc_info=True
+            )
+
+            try:
+                process_document(metadata.document_id, str(file_path), tenant_id=tenant_id)
+                status_value = ProcessingStatus.COMPLETED
+                message = "Document processed successfully (sync fallback)"
+            except Exception as proc_error:
+                logger.error(f"Error processing document for tenant {tenant_id}: {proc_error}")
+                status_value = ProcessingStatus.FAILED
+                message = f"Processing failed: {str(proc_error)}"
+
+            return UploadResponse(
+                document_id=metadata.document_id,
+                filename=metadata.filename,
+                file_type=metadata.file_type,
+                size_bytes=metadata.size_bytes,
+                status=status_value,
+                message=message,
+                job_id=job.job_id,
+            )
 
     except Exception as e:
         logger.error(f"Upload error for tenant {tenant_id}: {e}")

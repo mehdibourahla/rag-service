@@ -7,7 +7,7 @@ import uuid
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
@@ -49,6 +49,7 @@ class ChatRequest(BaseModel):
 @router.post("/query", response_model=QueryResponse)
 @limiter.limit(get_tenant_rate_limit("query"))
 async def query_documents(
+    http_request: Request,
     request: QueryRequest,
     tenant_id: UUID = Depends(get_current_tenant_id),
     db: DBSession = Depends(get_db)
@@ -110,6 +111,7 @@ async def query_documents(
 @router.post("/chat")
 @limiter.limit(get_tenant_rate_limit("chat"))
 async def chat_stream(
+    http_request: Request,
     request: ChatRequest,
     tenant_id: UUID = Depends(get_current_tenant_id),
     db: DBSession = Depends(get_db)

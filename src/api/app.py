@@ -4,15 +4,18 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from src.api import error_handlers
-from src.api.routes import chat, documents, health, sessions, tenants
+from src.api.routes import chat, documents, health, jobs, sessions, tenants
 from src.core.config import settings
 from src.middleware.rate_limit import limiter
 
@@ -23,6 +26,31 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# Initialize Sentry for error tracking (if DSN is configured)
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.app_env,
+        # Sample rate for performance monitoring
+        traces_sample_rate=0.1 if settings.app_env == "production" else 1.0,
+        # Sample rate for profiling
+        profiles_sample_rate=0.1 if settings.app_env == "production" else 1.0,
+        # Integrations
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+            SqlalchemyIntegration(),
+        ],
+        # Release tracking
+        release=f"pingo-chatbot@0.2.0",
+        # Send default PII (user IDs, but not sensitive data)
+        send_default_pii=False,
+        # Attach stack locals to errors (development only)
+        attach_stacktrace=settings.app_env != "production",
+    )
+    logger.info(f"Sentry initialized for environment: {settings.app_env}")
+else:
+    logger.info("Sentry not configured (SENTRY_DSN not set)")
 
 
 @asynccontextmanager
@@ -95,6 +123,33 @@ async def add_security_headers(request: Request, call_next):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
+# Sentry context enrichment middleware
+if settings.sentry_dsn:
+    @app.middleware("http")
+    async def add_sentry_context(request: Request, call_next):
+        """Enrich Sentry events with request and tenant context."""
+        with sentry_sdk.configure_scope() as scope:
+            # Add request context
+            scope.set_context("request", {
+                "url": str(request.url),
+                "method": request.method,
+                "headers": dict(request.headers),
+                "request_id": getattr(request.state, "request_id", None),
+            })
+
+            # Add tenant context (if available)
+            tenant = getattr(request.state, "tenant", None)
+            if tenant:
+                scope.set_user({
+                    "id": str(tenant.tenant_id),
+                    "username": tenant.name,
+                    "email": tenant.contact_email,
+                })
+                scope.set_tag("tenant_tier", tenant.tier)
+                scope.set_tag("tenant_id", str(tenant.tenant_id))
+
+        return await call_next(request)
+
 # Register error handlers
 app.add_exception_handler(Exception, error_handlers.generic_exception_handler)
 app.add_exception_handler(RequestValidationError, error_handlers.validation_exception_handler)
@@ -106,6 +161,7 @@ app.include_router(health.router, prefix="/api/v1")
 app.include_router(tenants.router, prefix="/api/v1")
 app.include_router(sessions.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 
 

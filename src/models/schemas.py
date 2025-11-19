@@ -169,6 +169,7 @@ class UploadResponse(BaseModel):
     size_bytes: int
     status: ProcessingStatus
     message: str
+    job_id: Optional[UUID] = None  # For async processing
 
 
 class QueryResponse(BaseModel):
