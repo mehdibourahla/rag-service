@@ -151,10 +151,13 @@ if settings.sentry_dsn:
         return await call_next(request)
 
 # Register error handlers
+from src.services.quota_service import QuotaExceededError
+
 app.add_exception_handler(Exception, error_handlers.generic_exception_handler)
 app.add_exception_handler(RequestValidationError, error_handlers.validation_exception_handler)
 app.add_exception_handler(ValidationError, error_handlers.validation_exception_handler)
 app.add_exception_handler(ValueError, error_handlers.value_error_handler)
+app.add_exception_handler(QuotaExceededError, error_handlers.quota_exceeded_handler)
 
 # Include all route modules
 app.include_router(health.router, prefix="/api/v1")

@@ -17,6 +17,7 @@ from src.models.tenant import (
     TenantSettings,
     UpdateTenantRequest,
 )
+from src.services.quota_service import QuotaService
 from src.services.tenant_service import TenantService
 
 logger = logging.getLogger(__name__)
@@ -350,3 +351,34 @@ async def get_tenant_stats(
 
     stats = TenantService.get_tenant_stats(db, tenant_id)
     return stats
+
+
+@router.get("/{tenant_id}/quotas")
+async def get_tenant_quotas(
+    tenant_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get quota usage and limits for a tenant.
+
+    Returns current usage, limits, and warnings about approaching limits.
+
+    Args:
+        tenant_id: Tenant ID
+        db: Database session
+
+    Returns:
+        Quota usage with limits and warnings
+
+    Raises:
+        HTTPException: If tenant not found
+    """
+    tenant = TenantService.get_tenant(db, tenant_id)
+    if not tenant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tenant {tenant_id} not found"
+        )
+
+    quota_usage = QuotaService.get_quota_usage(db, tenant)
+    return quota_usage

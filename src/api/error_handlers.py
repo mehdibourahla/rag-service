@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from src.core.config import settings
+from src.services.quota_service import QuotaExceededError
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,42 @@ async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse
         content={
             "error": "bad_request",
             "message": str(exc),
+            "request_id": request_id,
+        },
+    )
+
+
+async def quota_exceeded_handler(request: Request, exc: QuotaExceededError) -> JSONResponse:
+    """
+    Handle QuotaExceededError exceptions.
+
+    Returns HTTP 402 Payment Required with details about the quota limit.
+    """
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+
+    logger.warning(
+        f"Quota exceeded: {exc}",
+        extra={
+            "request_id": request_id,
+            "path": request.url.path,
+            "method": request.method,
+            "quota_type": exc.quota_type,
+            "current": exc.current,
+            "limit": exc.limit,
+            "tier": exc.tier,
+        },
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        content={
+            "error": "quota_exceeded",
+            "message": str(exc),
+            "quota_type": exc.quota_type,
+            "current": exc.current,
+            "limit": exc.limit,
+            "tier": exc.tier,
+            "upgrade_required": True,
             "request_id": request_id,
         },
     )

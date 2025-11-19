@@ -20,6 +20,7 @@ from src.models.schemas import (
 )
 from src.services.document_service import process_document
 from src.services.job_service import JobService
+from src.services.quota_service import QuotaService
 from src.workers.queue import get_job_queue
 
 logger = logging.getLogger(__name__)
@@ -56,10 +57,24 @@ async def upload_document(
         HTTPException: If upload or processing fails
     """
     try:
+        # Get tenant from database
+        from src.db.models import Tenant
+
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found"
+            )
+
         # Save uploaded file
         file_path = settings.upload_dir / f"{tenant_id}_{file.filename}"
         content = await file.read()
         file_path.write_bytes(content)
+
+        # Check file size quota before processing
+        file_size_mb = len(content) / (1024 * 1024)  # Convert bytes to MB
+        QuotaService.check_document_quota(db, tenant, file_size_mb=file_size_mb)
 
         # Detect file type
         file_type = FileDetector.detect(file_path)
