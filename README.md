@@ -15,6 +15,8 @@ Production-grade multi-tenant RAG (Retrieval-Augmented Generation) platform for 
 - 🚀 **[Quick Reference](docs/QUICK_REFERENCE.md)** - One-page developer guide
 - 📊 **[Architecture Diagrams](docs/ARCHITECTURE_DIAGRAMS.md)** - 11 comprehensive Mermaid diagrams
 - 📖 **[Documentation Index](docs/README.md)** - Full documentation catalog
+- ✅ **[Implementation Status](IMPLEMENTATION_STATUS.md)** - Complete feature checklist vs. architecture (175 items tracked)
+- 🔧 **[Partial Features Plan](PARTIAL_FEATURES_PLAN.md)** - Completion plan for 22 partially implemented features (4-week roadmap)
 - 🔍 **[Audit Summary](AUDIT_SUMMARY.md)** - Codebase audit & roadmap (Grade: B+)
 - ⚠️ **[Critical Gaps](CRITICAL_GAPS.md)** - Production readiness checklist (15 items)
 - 🧹 **[YAGNI Cleanup](YAGNI_CLEANUP.md)** - Recent simplifications (30% less complexity)
