@@ -17,6 +17,7 @@ from src.agent.memory import ConversationMemory
 from src.api.dependencies import get_generator, get_tenant_retriever
 from src.core.config import settings
 from src.db.session import get_db
+from src.middleware.rate_limit import get_tenant_rate_limit, limiter
 from src.middleware.tenant import get_current_tenant_id
 from src.models.schemas import QueryRequest, QueryResponse
 from src.models.session import MessageRole
@@ -46,6 +47,7 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/query", response_model=QueryResponse)
+@limiter.limit(get_tenant_rate_limit("query"))
 async def query_documents(
     request: QueryRequest,
     tenant_id: UUID = Depends(get_current_tenant_id),
@@ -55,6 +57,10 @@ async def query_documents(
     Query documents using RAG (tenant-scoped).
 
     Requires: X-API-Key header
+
+    Rate Limits:
+        - FREE tier: 200 requests/hour
+        - PRO tier: 20,000 requests/hour
 
     Args:
         request: Query request
@@ -102,6 +108,7 @@ async def query_documents(
 
 
 @router.post("/chat")
+@limiter.limit(get_tenant_rate_limit("chat"))
 async def chat_stream(
     request: ChatRequest,
     tenant_id: UUID = Depends(get_current_tenant_id),
@@ -111,6 +118,10 @@ async def chat_stream(
     Streaming chat endpoint compatible with AI SDK (tenant-scoped).
 
     Requires: X-API-Key header
+
+    Rate Limits:
+        - FREE tier: 100 requests/hour
+        - PRO tier: 10,000 requests/hour
 
     Args:
         request: Chat request with messages

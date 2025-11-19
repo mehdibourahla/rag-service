@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # API configuration
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
     api_port: int = Field(default=8001, alias="API_PORT")
+    allowed_origins: str = Field(default="http://localhost:3000", alias="ALLOWED_ORIGINS")
 
     # Storage paths
     upload_dir: Path = Field(default=Path("./data/uploads"), alias="UPLOAD_DIR")
@@ -59,6 +60,33 @@ class Settings(BaseSettings):
     # Processing configuration
     max_workers: int = Field(default=4, alias="MAX_WORKERS")
 
+    @field_validator("secret_key")
+    @classmethod
+    def validate_secret_key(cls, v: str) -> str:
+        """Validate that SECRET_KEY is secure and changed from default."""
+        if v == "change-this-secret-key-in-production":
+            raise ValueError(
+                "SECRET_KEY must be changed from default value. "
+                "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+        if len(v) < 32:
+            raise ValueError(
+                f"SECRET_KEY must be at least 32 characters long (current: {len(v)}). "
+                "Generate a secure key with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+        return v
+
+    @field_validator("openai_api_key")
+    @classmethod
+    def validate_openai_key(cls, v: str) -> str:
+        """Validate that OpenAI API key is provided."""
+        if not v or v.strip() == "":
+            raise ValueError(
+                "OPENAI_API_KEY is required. "
+                "Get your API key from https://platform.openai.com/api-keys"
+            )
+        return v
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Ensure directories exist
@@ -70,6 +98,10 @@ class Settings(BaseSettings):
     def qdrant_url(self) -> str:
         """Get Qdrant connection URL."""
         return f"http://{self.qdrant_host}:{self.qdrant_port}"
+
+    def get_allowed_origins(self) -> list[str]:
+        """Parse ALLOWED_ORIGINS from comma-separated string."""
+        return [origin.strip() for origin in self.allowed_origins.split(",")]
 
 
 # Global settings instance

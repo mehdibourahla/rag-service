@@ -10,6 +10,7 @@ from src.api.dependencies import get_tenant_bm25_index, get_vector_store
 from src.core.config import settings
 from src.db.session import get_db
 from src.ingestion.file_detector import FileDetector
+from src.middleware.rate_limit import get_tenant_rate_limit, limiter
 from src.middleware.tenant import get_current_tenant_id
 from src.models.schemas import (
     DocumentMetadata,
@@ -24,6 +25,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 
 @router.post("/upload", response_model=UploadResponse)
+@limiter.limit(get_tenant_rate_limit("upload"))
 async def upload_document(
     file: UploadFile = File(...),
     tenant_id: UUID = Depends(get_current_tenant_id),
@@ -33,6 +35,10 @@ async def upload_document(
     Upload and process a document.
 
     Requires: X-API-Key header
+
+    Rate Limits:
+        - FREE tier: 10 uploads/hour
+        - PRO tier: 1,000 uploads/hour
 
     Args:
         file: Uploaded file
