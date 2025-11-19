@@ -27,18 +27,28 @@ class AuthService:
         """
         Hash an API key for secure storage.
 
+        Note: bcrypt has a 72-byte limit, so we truncate the key before hashing.
+
         Args:
             api_key: Plain text API key
 
         Returns:
             Hashed API key
         """
-        return pwd_context.hash(api_key)
+        # Truncate to 72 bytes for bcrypt compatibility
+        # Since API keys are ASCII, we can safely truncate at character level
+        if len(api_key) > 72:
+            api_key_truncated = api_key[:72]
+        else:
+            api_key_truncated = api_key
+        return pwd_context.hash(api_key_truncated)
 
     @staticmethod
     def verify_api_key(plain_key: str, hashed_key: str) -> bool:
         """
         Verify an API key against its hash.
+
+        Note: bcrypt has a 72-byte limit, so we truncate the key before verifying.
 
         Args:
             plain_key: Plain text API key
@@ -47,7 +57,13 @@ class AuthService:
         Returns:
             True if key matches, False otherwise
         """
-        return pwd_context.verify(plain_key, hashed_key)
+        # Truncate to 72 bytes for bcrypt compatibility (same as hash_api_key)
+        # Since API keys are ASCII, we can safely truncate at character level
+        if len(plain_key) > 72:
+            plain_key_truncated = plain_key[:72]
+        else:
+            plain_key_truncated = plain_key
+        return pwd_context.verify(plain_key_truncated, hashed_key)
 
     @staticmethod
     def generate_api_key() -> tuple[str, str]:

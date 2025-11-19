@@ -9,53 +9,24 @@ from src.models.schemas import FileType
 class FileDetector:
     """Detects file type from path or content."""
 
-    # MIME type mappings to FileType
     MIME_MAPPINGS = {
         "application/pdf": FileType.PDF,
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": FileType.DOCX,
-        "application/msword": FileType.DOCX,
+        "application/msword": FileType.DOC,
         "text/plain": FileType.TXT,
-        "image/jpeg": FileType.IMAGE,
-        "image/png": FileType.IMAGE,
-        "image/gif": FileType.IMAGE,
-        "image/bmp": FileType.IMAGE,
-        "image/tiff": FileType.IMAGE,
-        "audio/mpeg": FileType.AUDIO,
-        "audio/wav": FileType.AUDIO,
-        "audio/x-wav": FileType.AUDIO,
-        "audio/ogg": FileType.AUDIO,
-        "audio/flac": FileType.AUDIO,
-        "audio/mp4": FileType.AUDIO,
-        "video/mp4": FileType.VIDEO,
-        "video/mpeg": FileType.VIDEO,
-        "video/x-msvideo": FileType.VIDEO,
-        "video/quicktime": FileType.VIDEO,
-        "video/x-matroska": FileType.VIDEO,
+        "text/html": FileType.HTML,
+        "text/markdown": FileType.MD,
     }
 
-    # Extension fallback mappings
     EXT_MAPPINGS = {
         ".pdf": FileType.PDF,
         ".docx": FileType.DOCX,
-        ".doc": FileType.DOCX,
+        ".doc": FileType.DOC,
         ".txt": FileType.TXT,
-        ".jpg": FileType.IMAGE,
-        ".jpeg": FileType.IMAGE,
-        ".png": FileType.IMAGE,
-        ".gif": FileType.IMAGE,
-        ".bmp": FileType.IMAGE,
-        ".tiff": FileType.IMAGE,
-        ".tif": FileType.IMAGE,
-        ".mp3": FileType.AUDIO,
-        ".wav": FileType.AUDIO,
-        ".ogg": FileType.AUDIO,
-        ".flac": FileType.AUDIO,
-        ".m4a": FileType.AUDIO,
-        ".mp4": FileType.VIDEO,
-        ".avi": FileType.VIDEO,
-        ".mov": FileType.VIDEO,
-        ".mkv": FileType.VIDEO,
-        ".mpeg": FileType.VIDEO,
+        ".html": FileType.HTML,
+        ".htm": FileType.HTML,
+        ".md": FileType.MD,
+        ".markdown": FileType.MD,
     }
 
     @classmethod

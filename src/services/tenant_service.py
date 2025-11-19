@@ -32,10 +32,14 @@ class TenantService:
             Created tenant
 
         Raises:
-            ValueError: If email already exists
+            ValueError: If email already exists (excluding soft-deleted tenants)
         """
-        # Check if email already exists
-        existing = db.query(Tenant).filter(Tenant.contact_email == request.contact_email).first()
+        # Check if email already exists (excluding soft-deleted tenants)
+        from src.models.tenant import TenantStatus
+        existing = db.query(Tenant).filter(
+            Tenant.contact_email == request.contact_email,
+            Tenant.status != TenantStatus.DELETED
+        ).first()
         if existing:
             raise ValueError(f"Tenant with email {request.contact_email} already exists")
 

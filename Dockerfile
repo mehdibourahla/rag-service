@@ -2,15 +2,7 @@ FROM python:3.10-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    tesseract-ocr \
-    tesseract-ocr-ara \
-    tesseract-ocr-fra \
-    tesseract-ocr-spa \
-    tesseract-ocr-deu \
-    tesseract-ocr-chi-sim \
     poppler-utils \
-    ffmpeg \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -28,7 +20,7 @@ RUN poetry config virtualenvs.create false \
 
 # Copy application code
 COPY src ./src
-COPY main.py worker.py ./
+COPY main.py ./
 
 # Create data directories
 RUN mkdir -p /app/data/uploads /app/data/processed /app/data/chunks

@@ -7,8 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from src.db import get_db
-from src.db.models import Tenant
+from src.db.session import get_db
 from src.models.tenant import (
     APIKeyResponse,
     CreateAPIKeyRequest,
@@ -18,7 +17,7 @@ from src.models.tenant import (
     TenantSettings,
     UpdateTenantRequest,
 )
-from src.services import TenantService
+from src.services.tenant_service import TenantService
 
 logger = logging.getLogger(__name__)
 

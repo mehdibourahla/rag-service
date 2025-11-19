@@ -11,7 +11,6 @@ from src.models.session import (
     CreateSessionRequest,
     EndReason,
     EndSessionRequest,
-    FeedbackType,
     MessageRole,
     SendFeedbackRequest,
     SessionStatus,

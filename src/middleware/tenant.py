@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from src.db import get_db
+from src.db.session import get_db
 from src.services.auth_service import AuthService
 
 

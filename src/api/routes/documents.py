@@ -6,17 +6,16 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session as DBSession
 
-from src.api.dependencies import get_bm25_index, get_tenant_bm25_index, get_vector_store
+from src.api.dependencies import get_tenant_bm25_index, get_vector_store
 from src.core.config import settings
-from src.db import get_db
+from src.db.session import get_db
 from src.ingestion.file_detector import FileDetector
-from src.middleware import get_current_tenant_id
+from src.middleware.tenant import get_current_tenant_id
 from src.models.schemas import (
     DocumentMetadata,
     ProcessingStatus,
     UploadResponse,
 )
-from src.retrieval import BM25Index, VectorStore
 from src.services.document_service import process_document
 
 logger = logging.getLogger(__name__)

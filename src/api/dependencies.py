@@ -5,8 +5,12 @@ from functools import lru_cache
 from typing import Optional
 from uuid import UUID
 
-from src.ingestion import Embedder, ProcessorRouter, TextChunker
-from src.retrieval import BM25Index, HybridRetriever, VectorStore
+from src.ingestion.chunker import TextChunker
+from src.ingestion.embedder import Embedder
+from src.ingestion.router import ProcessorRouter
+from src.retrieval.bm25_index import BM25Index
+from src.retrieval.hybrid_retriever import HybridRetriever
+from src.retrieval.vector_store import VectorStore
 from src.retrieval.generator import Generator
 
 logger = logging.getLogger(__name__)
@@ -75,16 +79,15 @@ def get_tenant_retriever(tenant_id: Optional[UUID] = None) -> HybridRetriever:
     )
 
 
-# Backwards compatibility - global instances (deprecated)
 @lru_cache()
 def get_bm25_index() -> BM25Index:
-    """Get or create BM25 index instance (global, deprecated - use get_tenant_bm25_index)."""
+    """Get or create BM25 index instance."""
     return BM25Index()
 
 
 @lru_cache()
 def get_retriever() -> HybridRetriever:
-    """Get or create hybrid retriever instance (global, deprecated - use get_tenant_retriever)."""
+    """Get or create hybrid retriever instance."""
     return HybridRetriever(
         vector_store=get_vector_store(),
         bm25_index=get_bm25_index(),

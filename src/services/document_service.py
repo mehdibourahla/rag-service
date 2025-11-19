@@ -6,8 +6,11 @@ from typing import Optional
 from uuid import UUID
 
 from src.core.config import settings
-from src.ingestion import Embedder, ProcessorRouter, TextChunker
-from src.retrieval import BM25Index, VectorStore
+from src.ingestion.chunker import TextChunker
+from src.ingestion.embedder import Embedder
+from src.ingestion.router import ProcessorRouter
+from src.retrieval.bm25_index import BM25Index
+from src.retrieval.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +22,7 @@ def process_document(document_id: UUID, file_path: str, tenant_id: Optional[UUID
     Args:
         document_id: Unique document identifier
         file_path: Path to the uploaded file
-        tenant_id: Tenant ID for multi-tenancy (optional for backwards compatibility)
+        tenant_id: Tenant ID for multi-tenancy
 
     Raises:
         Exception: If processing fails

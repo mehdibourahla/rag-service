@@ -1,12 +1,12 @@
 """Agent executor with ReAct pattern and self-correction."""
 
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
-from src.agent.planner import ActionType, Agent, Plan
+from src.agent.planner import Agent, Plan
 from src.agent.tools import AgentTools
 from src.models.schemas import RetrievedChunk
-from src.retrieval import HybridRetriever
+from src.retrieval.hybrid_retriever import HybridRetriever
 
 logger = logging.getLogger(__name__)
 

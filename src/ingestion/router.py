@@ -4,13 +4,9 @@ import logging
 from pathlib import Path
 from typing import List
 
-from src.ingestion.file_detector import FileDetector
-from src.ingestion.processors import (
-    BaseProcessor,
-    # ImageProcessor,  # REMOVED: Phase 1 is text-only, add back for multi-modal support
-    TextProcessor,
-)
-from src.models.schemas import FileType, Modality
+from src.ingestion.processors.base import BaseProcessor
+from src.ingestion.processors.text_processor import TextProcessor
+from src.models.schemas import Modality
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +18,6 @@ class ProcessorRouter:
         """Initialize router with all processors."""
         self.processors: List[BaseProcessor] = [
             TextProcessor(),
-            # ImageProcessor(),  # REMOVED: Phase 1 is text-only
         ]
 
     def route(self, file_path: Path) -> tuple[str, Modality]:

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session as DBSession
 from fastapi import Depends
 
 from src.api.dependencies import get_bm25_index, get_vector_store
-from src.db import get_db
+from src.db.session import get_db
 from src.db.models import ChatSession, Message, Tenant, TenantAPIKey
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ async def health_check(db: DBSession = Depends(get_db)):
         total_tenants = db.query(Tenant).count()
         active_tenants = db.query(Tenant).filter(Tenant.status == "active").count()
         total_api_keys = db.query(TenantAPIKey).count()
-        active_api_keys = db.query(TenantAPIKey).filter(TenantAPIKey.is_active == True).count()
+        active_api_keys = db.query(TenantAPIKey).filter(TenantAPIKey.is_active).count()
         total_sessions = db.query(ChatSession).count()
         total_messages = db.query(Message).count()
 

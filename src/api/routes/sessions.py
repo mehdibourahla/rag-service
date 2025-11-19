@@ -7,8 +7,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session as DBSession
 
-from src.db import get_db
-from src.middleware import get_current_tenant_id
+from src.db.session import get_db
+from src.middleware.tenant import get_current_tenant_id
 from src.models.session import (
     ConversationHistory,
     CreateSessionRequest,

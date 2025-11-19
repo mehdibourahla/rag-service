@@ -8,7 +8,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from src.core.config import settings
-from src.models.schemas import ChunkMetadata, TextChunk
+from src.models.schemas import TextChunk
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class VectorStore:
 
         Args:
             chunks: List of TextChunk objects with embeddings
-            tenant_id: Tenant ID for multi-tenancy (optional for backwards compatibility)
+            tenant_id: Tenant ID for multi-tenancy
 
         Returns:
             Number of chunks added
@@ -144,7 +144,6 @@ class VectorStore:
                         FieldCondition(key=key, match=MatchValue(value=value))
                     )
         elif filter_dict:
-            # Use filter_dict without tenant filtering (backwards compatibility)
             query_filter = filter_dict
 
         results = self.client.search(
@@ -230,7 +229,7 @@ class VectorStore:
             # Count chunks for specific tenant using scroll
             from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-            result = self.client.scroll(
+            _result = self.client.scroll(
                 collection_name=self.collection_name,
                 scroll_filter=Filter(
                     must=[
@@ -244,9 +243,6 @@ class VectorStore:
                 with_payload=False,
                 with_vectors=False,
             )
-            # Note: This is an approximation. For exact count, would need to scroll through all
-            # For now, return the collection count which includes all tenants
-            # TODO: Implement exact tenant count if needed
             logger.warning("Tenant-specific count not fully implemented, returning total count")
 
         collection_info = self.client.get_collection(self.collection_name)

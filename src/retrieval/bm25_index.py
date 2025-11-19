@@ -3,7 +3,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 from uuid import UUID
 
 from rank_bm25 import BM25Okapi
@@ -196,7 +196,6 @@ class BM25Index:
     def clear_all(self) -> bool:
         """
         Clear all chunks from the BM25 index.
-        Note: This instance is already tenant-scoped if tenant_id was provided during init.
 
         Returns:
             True if successful

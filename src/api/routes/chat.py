@@ -12,15 +12,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 
-from src.agent import Agent, ActionType, AgentExecutor, ConversationMemory
-from src.api.dependencies import get_embedder, get_generator, get_tenant_retriever
+from src.agent.executor import AgentExecutor
+from src.agent.memory import ConversationMemory
+from src.api.dependencies import get_generator, get_tenant_retriever
 from src.core.config import settings
-from src.db import get_db
-from src.middleware import get_current_tenant_id
+from src.db.session import get_db
+from src.middleware.tenant import get_current_tenant_id
 from src.models.schemas import QueryRequest, QueryResponse
 from src.models.session import MessageRole
-from src.retrieval.generator import Generator
-from src.retrieval.hybrid_retriever import HybridRetriever
 from src.services.session_service import SessionService
 
 logger = logging.getLogger(__name__)
@@ -142,7 +141,7 @@ async def chat_stream(
 
         # Save user message
         start_time = time.time()
-        user_message = SessionService.add_message(
+        SessionService.add_message(
             db, session_id, tenant_id, MessageRole.USER, query
         )
 
