@@ -18,6 +18,7 @@ from src.models.schemas import (
     ProcessingStatus,
     UploadResponse,
 )
+from src.services.cache_service import get_cache_service
 from src.services.document_service import process_document
 from src.services.job_service import JobService
 from src.services.quota_service import QuotaService
@@ -187,7 +188,10 @@ async def delete_document(
         vector_store.delete_by_document(document_id, tenant_id=tenant_id)
         bm25_index.delete_by_document(document_id)
 
-        logger.info(f"Tenant {tenant_id} deleted document {document_id}")
+        # Invalidate cache for this tenant
+        cache = get_cache_service()
+        invalidated = cache.invalidate_tenant_cache(tenant_id)
+        logger.info(f"Tenant {tenant_id} deleted document {document_id}, invalidated {invalidated} cache entries")
 
     except Exception as e:
         logger.error(f"Delete error for tenant {tenant_id}: {e}")
@@ -254,13 +258,18 @@ async def clear_all_documents(
         vector_success = vector_store.clear_all(tenant_id=tenant_id)
         bm25_success = bm25_index.clear_all()
 
+        # Invalidate cache for this tenant
+        cache = get_cache_service()
+        invalidated = cache.invalidate_tenant_cache(tenant_id)
+
         if vector_success and bm25_success:
-            logger.info(f"All indexes cleared successfully for tenant {tenant_id}")
+            logger.info(f"All indexes cleared successfully for tenant {tenant_id}, invalidated {invalidated} cache entries")
             return {
                 "message": "All documents cleared successfully",
                 "tenant_id": str(tenant_id),
                 "vector_store_cleared": True,
                 "bm25_index_cleared": True,
+                "cache_invalidated": invalidated,
             }
         else:
             logger.warning(f"Some indexes failed to clear for tenant {tenant_id}")

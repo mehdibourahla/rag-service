@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from src.core.config import settings
 from src.db.session import SessionLocal
 from src.models.job import JobStatus
+from src.services.cache_service import get_cache_service
 from src.services.document_service import process_document
 from src.services.job_service import JobService
 
@@ -67,6 +68,11 @@ def process_document_job(
         if rq_job:
             rq_job.meta["progress"] = 0.9
             rq_job.save_meta()
+
+        # Invalidate cache for this tenant (new document added)
+        cache = get_cache_service()
+        invalidated = cache.invalidate_tenant_cache(tenant_uuid)
+        logger.info(f"[RQ Worker] Invalidated {invalidated} cache entries for tenant {tenant_id}")
 
         # Mark job as completed
         result = {
