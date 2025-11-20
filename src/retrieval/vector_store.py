@@ -78,7 +78,7 @@ class VectorStore:
                 "document_id": str(chunk.metadata.document_id),
                 "source": chunk.metadata.source,
                 "modality": chunk.metadata.modality.value,
-                "chunk_index": chunk.metadata.chunk_index,
+                "chunk_id": str(chunk.metadata.chunk_id),
                 "section_title": chunk.metadata.section_title,
                 "page_number": chunk.metadata.page_number,
                 "created_at": chunk.metadata.created_at.isoformat(),
@@ -146,12 +146,12 @@ class VectorStore:
         elif filter_dict:
             query_filter = filter_dict
 
-        results = self.client.search(
+        results = self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=query_embedding,
+            query=query_embedding,
             limit=top_k,
             query_filter=query_filter,
-        )
+        ).points
 
         formatted_results = []
         for result in results:
@@ -164,7 +164,6 @@ class VectorStore:
                         "document_id": result.payload["document_id"],
                         "source": result.payload["source"],
                         "modality": result.payload["modality"],
-                        "chunk_index": result.payload["chunk_index"],
                         "section_title": result.payload.get("section_title"),
                         "page_number": result.payload.get("page_number"),
                     },

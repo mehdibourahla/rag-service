@@ -51,6 +51,9 @@ data/chunks/
 .pytest_cache/
 .coverage
 htmlcov/
+coverage.xml
+pytest.ini
+test_results*.json
 
 # Logs
 *.log

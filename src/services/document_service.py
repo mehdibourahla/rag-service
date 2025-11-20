@@ -36,7 +36,7 @@ def process_document(document_id: UUID, file_path: str, tenant_id: Optional[UUID
         chunker = TextChunker(
             chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
         )
-        embedder = Embedder(model=settings.embedding_model)
+        embedder = Embedder(model_name=settings.embedding_model)
         vector_store = VectorStore(
             host=settings.qdrant_host,
             port=settings.qdrant_port,

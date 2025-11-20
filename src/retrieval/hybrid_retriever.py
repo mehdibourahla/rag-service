@@ -258,7 +258,6 @@ Rank these passages by relevance."""
                 document_id=UUID(result["metadata"]["document_id"]),
                 source=result["metadata"]["source"],
                 modality=result["metadata"]["modality"],
-                chunk_index=result["metadata"]["chunk_index"],
                 section_title=result["metadata"].get("section_title"),
                 page_number=result["metadata"].get("page_number"),
             )

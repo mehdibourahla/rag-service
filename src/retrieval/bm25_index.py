@@ -93,7 +93,6 @@ class BM25Index:
                 "document_id": str(chunk.metadata.document_id),
                 "source": chunk.metadata.source,
                 "modality": chunk.metadata.modality.value,
-                "chunk_index": chunk.metadata.chunk_index,
                 "section_title": chunk.metadata.section_title,
                 "page_number": chunk.metadata.page_number,
             }

@@ -52,10 +52,10 @@ class JobQueue:
 
         rq_job = self.queue.enqueue(
             process_document_job,
-            job_id=str(job_id),
-            document_id=str(document_id),
-            file_path=file_path,
-            tenant_id=str(tenant_id),
+            str(job_id),
+            str(document_id),
+            file_path,
+            str(tenant_id),
             description=f"Process document {document_id} for tenant {tenant_id}",
             meta={"job_id": str(job_id), "tenant_id": str(tenant_id)},
         )

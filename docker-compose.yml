@@ -73,6 +73,31 @@ services:
     networks:
       - rag-network
 
+  # Background Worker for Document Processing
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pingo-worker
+    command: python scripts/start_worker.py
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+      - ./data/tiktoken_cache:/app/tiktoken_cache
+    environment:
+      - QDRANT_HOST=qdrant
+      - DATABASE_URL=postgresql://pingo:pingo@postgres:5432/pingo
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - TIKTOKEN_CACHE_DIR=/app/tiktoken_cache
+    depends_on:
+      - qdrant
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - rag-network
+
 volumes:
   qdrant_storage:
   postgres_data:

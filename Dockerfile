@@ -20,6 +20,7 @@ RUN poetry config virtualenvs.create false \
 
 # Copy application code
 COPY src ./src
+COPY scripts ./scripts
 COPY main.py ./
 
 # Create data directories
