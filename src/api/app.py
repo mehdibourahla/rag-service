@@ -17,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 from src.api import error_handlers
 from src.api.routes import chat, documents, health, jobs, sessions, tenants
 from src.core.config import settings
-from src.middleware.rate_limit import limiter
+from src.middleware.rate_limit import limiter, set_request_context
 
 # Configure logging
 logging.basicConfig(
@@ -101,6 +101,14 @@ app.add_middleware(
 )
 
 logger.info(f"CORS allowed origins: {settings.get_allowed_origins()}")
+
+# Request context middleware - must run before rate limiting
+@app.middleware("http")
+async def set_rate_limit_context(request: Request, call_next):
+    """Set request in context variable for rate limit checking."""
+    set_request_context(request)
+    response = await call_next(request)
+    return response
 
 # Request ID middleware
 @app.middleware("http")

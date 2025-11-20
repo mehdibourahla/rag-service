@@ -33,10 +33,15 @@ psycopg2-binary>=2.9.0
 # Authentication and security
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
+bcrypt==3.2.2  # Pin to 3.x for passlib compatibility (4.0+ not supported)
 python-multipart>=0.0.20
 
 # Rate limiting
 slowapi>=0.1.9
+
+# Caching and job queue
+redis>=5.0.0
+rq>=1.15.0
 
 # Observability
 prometheus-client>=0.21.0

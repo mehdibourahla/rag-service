@@ -74,17 +74,20 @@ def db(db_session) -> Generator[Session, None, None]:
 @pytest.fixture
 def free_tenant(db: Session) -> Tenant:
     """Create a FREE tier tenant for testing."""
+    from src.models.tenant import Industry, TenantStatus
+
     tenant = Tenant(
         tenant_id=uuid4(),
         name="Test Tenant (FREE)",
         tier=TenantTier.FREE,
-        brand_name="Test Brand",
-        brand_tone="professional",
-        language="en",
-        industry="technology",
+        industry=Industry.TECHNOLOGY,
         contact_email="test@example.com",
-        status="active",
-        settings={},
+        status=TenantStatus.ACTIVE,
+        settings={
+            "brand_name": "Test Brand",
+            "brand_tone": "professional",
+            "language": "en",
+        },
     )
     db.add(tenant)
     db.commit()
@@ -95,17 +98,20 @@ def free_tenant(db: Session) -> Tenant:
 @pytest.fixture
 def pro_tenant(db: Session) -> Tenant:
     """Create a PRO tier tenant for testing."""
+    from src.models.tenant import Industry, TenantStatus
+
     tenant = Tenant(
         tenant_id=uuid4(),
         name="Test Tenant (PRO)",
         tier=TenantTier.PRO,
-        brand_name="Test Pro Brand",
-        brand_tone="friendly",
-        language="en",
-        industry="e-commerce",
+        industry=Industry.ECOMMERCE,
         contact_email="pro@example.com",
-        status="active",
-        settings={},
+        status=TenantStatus.ACTIVE,
+        settings={
+            "brand_name": "Test Pro Brand",
+            "brand_tone": "friendly",
+            "language": "en",
+        },
     )
     db.add(tenant)
     db.commit()
@@ -116,18 +122,21 @@ def pro_tenant(db: Session) -> Tenant:
 @pytest.fixture
 def multiple_tenants(db: Session) -> list[Tenant]:
     """Create multiple tenants for multi-tenancy isolation tests."""
+    from src.models.tenant import Industry, TenantStatus
+
     tenants = [
         Tenant(
             tenant_id=uuid4(),
             name=f"Tenant {i}",
             tier=TenantTier.FREE if i % 2 == 0 else TenantTier.PRO,
-            brand_name=f"Brand {i}",
-            brand_tone="professional",
-            language="en",
-            industry="technology",
+            industry=Industry.TECHNOLOGY,
             contact_email=f"tenant{i}@example.com",
-            status="active",
-            settings={},
+            status=TenantStatus.ACTIVE,
+            settings={
+                "brand_name": f"Brand {i}",
+                "brand_tone": "professional",
+                "language": "en",
+            },
         )
         for i in range(3)
     ]
@@ -146,33 +155,39 @@ def multiple_tenants(db: Session) -> list[Tenant]:
 @pytest.fixture
 def api_key_free(db: Session, free_tenant: Tenant) -> APIKey:
     """Create an API key for the FREE tier tenant."""
-    from src.services.auth_service import AuthService
+    from src.services.tenant_service import TenantService
+    from src.models.tenant import CreateAPIKeyRequest
 
-    api_key_obj = AuthService.create_api_key(
-        db=db,
-        tenant_id=free_tenant.tenant_id,
+    request = CreateAPIKeyRequest(
         name="Test API Key (FREE)",
         scopes=["chat", "upload", "query"],
-        environment="test",
+    )
+    api_key_obj, plain_key = TenantService.create_api_key(
+        db=db,
+        tenant_id=free_tenant.tenant_id,
+        request=request,
     )
     # Store the raw key for testing
-    api_key_obj.raw_key = api_key_obj.key  # This is the untruncated key before save
+    api_key_obj.raw_key = plain_key
     return api_key_obj
 
 
 @pytest.fixture
 def api_key_pro(db: Session, pro_tenant: Tenant) -> APIKey:
     """Create an API key for the PRO tier tenant."""
-    from src.services.auth_service import AuthService
+    from src.services.tenant_service import TenantService
+    from src.models.tenant import CreateAPIKeyRequest
 
-    api_key_obj = AuthService.create_api_key(
-        db=db,
-        tenant_id=pro_tenant.tenant_id,
+    request = CreateAPIKeyRequest(
         name="Test API Key (PRO)",
         scopes=["chat", "upload", "query"],
-        environment="test",
     )
-    api_key_obj.raw_key = api_key_obj.key
+    api_key_obj, plain_key = TenantService.create_api_key(
+        db=db,
+        tenant_id=pro_tenant.tenant_id,
+        request=request,
+    )
+    api_key_obj.raw_key = plain_key
     return api_key_obj
 
 
@@ -182,8 +197,26 @@ def api_key_pro(db: Session, pro_tenant: Tenant) -> APIKey:
 
 
 @pytest.fixture
-def client(db_session) -> TestClient:
+def client(db_session, mocker) -> TestClient:
     """Create a FastAPI test client with database override."""
+    # Mock Qdrant client to prevent connection attempts
+    mock_qdrant_client = mocker.Mock()
+    mock_qdrant_client.get_collections.return_value = mocker.Mock(collections=[])
+    mock_qdrant_client.create_collection.return_value = None
+    mock_qdrant_client.upsert.return_value = None
+    mock_qdrant_client.search.return_value = []
+    mock_qdrant_client.delete.return_value = None
+    mock_qdrant_client.count.return_value = mocker.Mock(count=0)
+    # Mock get_collection to return collection info with points_count
+    mock_collection_info = mocker.Mock()
+    mock_collection_info.points_count = 0
+    mock_qdrant_client.get_collection.return_value = mock_collection_info
+
+    mocker.patch("src.retrieval.vector_store.QdrantClient", return_value=mock_qdrant_client)
+
+    # Mock get_tenant_rate_limit to return a simple rate limit string
+    # This prevents the rate limiter callable signature issues in tests
+    mocker.patch("src.middleware.rate_limit.get_tenant_rate_limit", return_value="100/hour")
 
     def override_get_db():
         try:

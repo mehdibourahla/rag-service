@@ -49,8 +49,8 @@ class ChatRequest(BaseModel):
 @router.post("/query", response_model=QueryResponse)
 @limiter.limit(get_tenant_rate_limit("query"))
 async def query_documents(
-    http_request: Request,
-    request: QueryRequest,
+    request: Request,
+    query: QueryRequest,
     tenant_id: UUID = Depends(get_current_tenant_id),
     db: DBSession = Depends(get_db)
 ) -> QueryResponse:
@@ -64,7 +64,7 @@ async def query_documents(
         - PRO tier: 20,000 requests/hour
 
     Args:
-        request: Query request
+        query: Query request
         tenant_id: Tenant ID (from API key)
         db: Database session
 
@@ -79,25 +79,25 @@ async def query_documents(
         generator = get_generator()
 
         # Retrieve relevant chunks (automatically filtered by tenant)
-        chunks = retriever.retrieve(query=request.query, top_k=request.top_k)
+        chunks = retriever.retrieve(query=query.query, top_k=query.top_k)
 
         if not chunks:
             return QueryResponse(
-                query=request.query,
+                query=query.query,
                 answer="I couldn't find any relevant information in the knowledge base.",
                 chunks=[],
                 processing_time=time.time() - start_time,
             )
 
         # Generate answer
-        answer = generator.generate(query=request.query, chunks=chunks)
+        answer = generator.generate(query=query.query, chunks=chunks)
 
         processing_time = time.time() - start_time
 
         logger.info(f"Tenant {tenant_id} query completed in {processing_time:.2f}s")
 
         return QueryResponse(
-            query=request.query,
+            query=query.query,
             answer=answer,
             chunks=chunks,
             processing_time=processing_time,
@@ -111,8 +111,8 @@ async def query_documents(
 @router.post("/chat")
 @limiter.limit(get_tenant_rate_limit("chat"))
 async def chat_stream(
-    http_request: Request,
-    request: ChatRequest,
+    request: Request,
+    chat_request: ChatRequest,
     tenant_id: UUID = Depends(get_current_tenant_id),
     db: DBSession = Depends(get_db)
 ):
@@ -126,7 +126,7 @@ async def chat_stream(
         - PRO tier: 10,000 requests/hour
 
     Args:
-        request: Chat request with messages
+        chat_request: Chat request with messages
         tenant_id: Tenant ID (from API key)
         db: Database session
 
@@ -135,14 +135,14 @@ async def chat_stream(
     """
     try:
         # Extract the last user message as the query
-        user_messages = [msg for msg in request.messages if msg.role == "user"]
+        user_messages = [msg for msg in chat_request.messages if msg.role == "user"]
         if not user_messages:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No user message found")
 
         query = user_messages[-1].content
 
         # Get or create session
-        session_id = request.session_id
+        session_id = chat_request.session_id
         if not session_id:
             # Create new session
             from src.models.session import CreateSessionRequest
@@ -163,7 +163,7 @@ async def chat_stream(
         memory = ConversationMemory(max_recent_messages=10)
 
         # Convert request messages to memory format
-        msg_objects = [MemMessage(role=m.role, content=m.content) for m in request.messages]
+        msg_objects = [MemMessage(role=m.role, content=m.content) for m in chat_request.messages]
         optimized_context = memory.manage_context(msg_objects)
         context_enhanced_query = memory.extract_query_context(optimized_context, query)
 
@@ -260,7 +260,7 @@ async def chat_stream(
                         # Convert request messages to OpenAI format (exclude the current query)
                         conversation_history = [
                             {"role": msg.role, "content": msg.content}
-                            for msg in request.messages[:-1]  # Exclude last message (current query)
+                            for msg in chat_request.messages[:-1]  # Exclude last message (current query)
                         ]
                         for token in generator.generate_vanilla_stream(
                             query=query,

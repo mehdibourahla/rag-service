@@ -122,8 +122,7 @@ Please answer the question based on the provided context. Indicate which sources
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format=RAGAnswer,
-                max_tokens=max_tokens,
-                temperature=temperature,
+                max_completion_tokens=max_tokens,
             )
 
             # Extract structured response
@@ -181,8 +180,7 @@ Please answer the question based on the provided context. Indicate which sources
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=max_tokens,
-            temperature=temperature,
+            max_completion_tokens=max_tokens,
         )
 
         answer = completion.choices[0].message.content.strip()
@@ -223,8 +221,7 @@ Please answer the question based on the provided context. Indicate which sources
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": user_prompt},
                 ],
-                max_tokens=max_tokens,
-                temperature=temperature,
+                max_completion_tokens=max_tokens,
                 stream=True,
             )
 
@@ -281,8 +278,7 @@ Today's date is {current_date}. Use this for any date-related calculations."""
             stream = client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
+                max_completion_tokens=max_tokens,
                 stream=True,
             )
 

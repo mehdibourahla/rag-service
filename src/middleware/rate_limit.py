@@ -1,7 +1,8 @@
 """Rate limiting middleware and utilities."""
 
 import logging
-from typing import Callable
+from contextvars import ContextVar
+from typing import TYPE_CHECKING, Callable, Optional
 
 from fastapi import Request
 from slowapi import Limiter
@@ -9,7 +10,13 @@ from slowapi.util import get_remote_address
 
 from src.models.tenant import TenantTier
 
+if TYPE_CHECKING:
+    from src.db.models import Tenant
+
 logger = logging.getLogger(__name__)
+
+# Context variable to store current request
+_request_context: ContextVar[Optional[Request]] = ContextVar("request_context", default=None)
 
 
 # Rate limits per tier (requests per time period)
@@ -31,22 +38,36 @@ TIER_RATE_LIMITS = {
 
 def get_tenant_rate_limit(endpoint_type: str = "default") -> Callable:
     """
-    Returns a function that determines rate limit based on tenant tier.
+    Returns a rate limit function for the specified endpoint type.
+
+    SlowAPI expects limit providers to have no parameters, so we use a closure
+    to capture the endpoint type and access the request from the current context.
 
     Args:
         endpoint_type: Type of endpoint (chat, upload, query, default)
 
     Returns:
-        Function that extracts rate limit string from request
+        Callable with no parameters that returns rate limit string
     """
+    def rate_limit_provider() -> str:
+        """
+        No-argument callable that returns rate limit based on tenant tier.
 
-    def _get_limit(request: Request) -> str:
+        Returns:
+            Rate limit string (e.g., "100/hour")
+        """
+        # Get request from context variable
+        request = _request_context.get()
+
         # Get tenant from request state (set by tenant middleware)
-        tenant = getattr(request.state, "tenant", None)
+        tenant: Optional[Tenant] = getattr(request.state, "tenant", None) if request else None
 
         if not tenant:
             # No tenant authenticated, use strictest limit
-            return TIER_RATE_LIMITS[TenantTier.FREE]["default"]
+            limit = TIER_RATE_LIMITS[TenantTier.FREE][endpoint_type]
+            if not limit:
+                limit = TIER_RATE_LIMITS[TenantTier.FREE]["default"]
+            return limit
 
         # Get tier-specific limits
         tier_limits = TIER_RATE_LIMITS.get(tenant.tier, TIER_RATE_LIMITS[TenantTier.FREE])
@@ -61,7 +82,7 @@ def get_tenant_rate_limit(endpoint_type: str = "default") -> Callable:
 
         return limit
 
-    return _get_limit
+    return rate_limit_provider
 
 
 def get_tenant_key(request: Request) -> str:
@@ -82,3 +103,15 @@ def get_tenant_key(request: Request) -> str:
 
 # Initialize limiter with tenant-based key function
 limiter = Limiter(key_func=get_tenant_key)
+
+
+def set_request_context(request: Request) -> None:
+    """
+    Set the current request in the context variable.
+
+    This should be called by middleware before rate limiting is checked.
+
+    Args:
+        request: The current FastAPI request
+    """
+    _request_context.set(request)
